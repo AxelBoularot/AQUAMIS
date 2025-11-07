@@ -52,11 +52,11 @@ class Cube(pygame.sprite.Sprite):
     def get_transformed_vertices(self, angle_x, angle_y, angle_z):
         return [rotate_point((v[0] * self.size, v[1] * self.size, v[2] * self.size), angle_x, angle_y, angle_z) for v in self.vertices]
 
-    def update(self):
+    def update(self,angle_x,angle_y,angle_z):
         
-        self.angle_x = (self.angle_x + 0.25) % 360  
-        self.angle_y = (self.angle_y + 0.25) % 360  
-        self.angle_z = (self.angle_z + 0.25) % 360  
+        self.angle_x = (angle_x) % 360  
+        self.angle_y = (angle_y) % 360  
+        self.angle_z = (angle_z) % 360  
 
         self.image.fill((0, 0, 0, 0))
         transformed_vertices = self.get_transformed_vertices(self.angle_x, self.angle_y, self.angle_z)
