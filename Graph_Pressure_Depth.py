@@ -47,7 +47,8 @@ class Graphs_Main:
         for i in range(0, self.max_value_pressure + 1, self.max_value_pressure // 5):
             y_pos = self.y_offset + self.height - (i / self.max_value_pressure) * self.height
             text = font.render(str(i), True, (255, 255, 255))
-            self.surface.blit(text, (self.x_offset - 30, y_pos - 10))
+            # Position text inside the graph area, to the right of the axis
+            self.surface.blit(text, (self.x_offset + 5, y_pos - 10))
     
     def draw(self):
         self.draw_grid()  
