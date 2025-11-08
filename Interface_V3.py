@@ -17,7 +17,7 @@ import os
 USE_PHONE_SENSORS = True  # Set to True to use phone sensors, False for satellite
 # The new approach will read data from a file instead of a thread
 SENSOR_DATA_FILE = "sensor_data.json"
-
+#test
 
 # Pygame's initialization - AMIS' LOGO - Interface's name
 
