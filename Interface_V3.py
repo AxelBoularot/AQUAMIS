@@ -3,20 +3,26 @@ from Password import Special_button
 from progress_bar import ProgressBar
 from Graph_Pressure_Depth import Graphs_Main
 from Graph_Angles import Graphs_Angles
-from lib_backend import VideoReceiver,DataHandler, SocketClient
+from lib_backend import VideoReceiver, DataHandler, SocketClient
 import numpy as np
 import tkinter as tk
 import json
 import pandas as pd
 from tkinter import filedialog
 import cv2
-import struct
 import os
 
-# Add a flag to switch between data sources
-USE_PHONE_SENSORS = True  # Set to True to use phone sensors, False for satellite
-# The new approach will read data from a file instead of a thread
+# ============================================================
+# MODE TÉLÉPHONE - Configuration
+# ============================================================
+# Active le mode téléphone (capteurs du téléphone via Phyphox)
+# Pour utiliser le mode satellite, mettez False
+USE_PHONE_SENSORS = True
+
+# Fichier JSON contenant les données des capteurs du téléphone
+# Généré par phone_listener.py
 SENSOR_DATA_FILE = "sensor_data.json"
+# ============================================================
 
 
 # Pygame's initialization - AMIS' LOGO - Interface's name
@@ -868,6 +874,7 @@ def main():
     
     def load_resources():
         nonlocal loading_complete, loading_progress, current_loading_step
+        global os, json, time, USE_PHONE_SENSORS, SENSOR_DATA_FILE
         
         loading_progress = 10
         current_loading_step = "Loading configuration..."
