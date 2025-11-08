@@ -14,7 +14,7 @@ import sys
 # ============================================================
 # L'IP peut être passée en argument
 PHONE_IP = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.157"
-PHONE_PORT = 8080                # Port par défaut de Phyphox
+PHONE_PORT = 5050                # Port de Phyphox (changé de 8080 car la caméra l'utilise)
 OUTPUT_FILE = "sensor_data.json" # Fichier pour l'interface AQUAMIS
 UPDATE_INTERVAL = 0.05           # 50ms entre chaque lecture
 
@@ -90,9 +90,10 @@ try:
                 
                 # Intégrer les vitesses pour obtenir les angles
                 # angle = angle_précédent + vitesse_angulaire * temps * conversion_rad_vers_deg
-                accumulated_angles['roll'] += gyrX * 57.2958 * UPDATE_INTERVAL
+                # NOTE: roll et yaw sont inversés pour correspondre à l'orientation d'AQUAMIS
+                accumulated_angles['yaw'] += gyrX * 57.2958 * UPDATE_INTERVAL    # Inversé
                 accumulated_angles['pitch'] += gyrY * 57.2958 * UPDATE_INTERVAL
-                accumulated_angles['yaw'] += gyrZ * 57.2958 * UPDATE_INTERVAL
+                accumulated_angles['roll'] += gyrZ * 57.2958 * UPDATE_INTERVAL   # Inversé
                 
                 # Normaliser les angles entre -180° et +180°
                 for key in accumulated_angles:
