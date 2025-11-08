@@ -687,6 +687,10 @@ def show_start_screen():
             # Route events to password handler when open
             result = password_button.handle_event_start(event)
             if result == "switch_screen":
+                global USE_PHONE_SENSORS
+                USE_PHONE_SENSORS = password_button.test_mode
+                mode_text = "TEST MODE (Phone Sensors)" if USE_PHONE_SENSORS else "NORMAL MODE (Satellite)"
+                print(f"✅ System configured to: {mode_text}")
                 transitioning = True
 
         # Draw password overlay if active

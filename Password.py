@@ -29,6 +29,8 @@ class Special_button:
         self.target_alpha = 0
         self.error_message = ""
         self.error_time = 0
+        # Mode test (téléphone)
+        self.test_mode = False
         self._draw_text()
 
     def draw(self, screen, font):
@@ -76,10 +78,19 @@ class Special_button:
     
     def handle_event_start(self, event):
         if self.show_password_input:
+            # Gestion du clic sur le toggle
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if hasattr(self, 'toggle_rect') and self.toggle_rect.collidepoint(event.pos):
+                    self.test_mode = not self.test_mode
+                    mode_text = "TEST MODE (Phone)" if self.test_mode else "NORMAL MODE (Satellite)"
+                    print(f"\n🔄 Mode changed to: {mode_text}")
+                    return None
+            
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
                     if self.password_text == self.correct_password:
-                        print("\nInitializing System - AMIS has successfully started!\n\n" 
+                        mode_text = "TEST MODE (Phone)" if self.test_mode else "NORMAL MODE (Satellite)"
+                        print(f"\nInitializing System - AMIS has successfully started in {mode_text}!\n\n" 
                               + "Timer has started!\n\n")
                         self.target_alpha = 0  # Fade out
                         self.password_text = ""
@@ -264,6 +275,33 @@ class Special_button:
             error_text.set_alpha(self.fade_alpha)
             error_rect = error_text.get_rect(centerx=box_width // 2, top=input_y + input_height + 15)
             dialog_surface.blit(error_text, error_rect)
+        
+        # Toggle Mode Test
+        toggle_y = input_y + input_height + 50
+        toggle_label_font = pygame.font.SysFont('Arial', 16, bold=True)
+        toggle_label = toggle_label_font.render("🧪 Test Mode (Phone Sensors)", True, (180, 200, 220))
+        toggle_label.set_alpha(self.fade_alpha)
+        toggle_label_rect = toggle_label.get_rect(left=input_x + 50, centery=toggle_y)
+        dialog_surface.blit(toggle_label, toggle_label_rect)
+        
+        # Toggle switch
+        switch_width = 50
+        switch_height = 26
+        switch_x = box_width - input_x - switch_width - 50
+        switch_y = toggle_y - switch_height // 2
+        
+        # Store toggle rect for click detection (relative to dialog box)
+        self.toggle_rect = pygame.Rect(box_x + switch_x, box_y + switch_y, switch_width, switch_height)
+        
+        # Background du switch
+        switch_bg_color = (70, 179, 230) if self.test_mode else (80, 90, 110)
+        pygame.draw.rect(dialog_surface, switch_bg_color + (int(self.fade_alpha),), 
+                        (switch_x, switch_y, switch_width, switch_height), border_radius=13)
+        
+        # Circle du switch
+        circle_x = switch_x + switch_width - 15 if self.test_mode else switch_x + 13
+        pygame.draw.circle(dialog_surface, (255, 255, 255, self.fade_alpha), 
+                          (int(circle_x), int(switch_y + switch_height // 2)), 10)
         
         # Instructions
         hint_font = pygame.font.SysFont('Arial', 13)
