@@ -17,10 +17,13 @@ import os
 # ============================================================
 # Active le mode téléphone (capteurs du téléphone via Phyphox)
 # Pour utiliser le mode satellite, mettez False
-USE_PHONE_SENSORS = True
+USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
+
+# IP du téléphone (définie par l'utilisateur dans l'interface)
+PHONE_IP = "192.168.1.157"
 
 # Fichier JSON contenant les données des capteurs du téléphone
-# Généré par phone_listener.py
+# Généré par phone_sensor.py
 SENSOR_DATA_FILE = "sensor_data.json"
 # ============================================================
 
@@ -687,10 +690,23 @@ def show_start_screen():
             # Route events to password handler when open
             result = password_button.handle_event_start(event)
             if result == "switch_screen":
-                global USE_PHONE_SENSORS
+                global USE_PHONE_SENSORS, PHONE_IP
                 USE_PHONE_SENSORS = password_button.test_mode
+                PHONE_IP = password_button.phone_ip
                 mode_text = "TEST MODE (Phone Sensors)" if USE_PHONE_SENSORS else "NORMAL MODE (Satellite)"
                 print(f"✅ System configured to: {mode_text}")
+                if USE_PHONE_SENSORS:
+                    print(f"📱 Phone IP: {PHONE_IP}")
+                    # Lancer le listener des capteurs du téléphone
+                    import subprocess
+                    import threading
+                    def start_phone_listener():
+                        try:
+                            subprocess.Popen([sys.executable, "phone_sensor.py", PHONE_IP], 
+                                           cwd=os.path.dirname(os.path.abspath(__file__)))
+                        except Exception as e:
+                            print(f"⚠️ Erreur lors du lancement du listener: {e}")
+                    threading.Thread(target=start_phone_listener, daemon=True).start()
                 transitioning = True
 
         # Draw password overlay if active
@@ -1405,6 +1421,43 @@ def main():
         virtual_screen.blit(telemetry_font.render("ROLL :", True, (255,0,0)), (45, 347))
         virtual_screen.blit(telemetry_font.render("PITCH :", True, (0,255,0)), (150, 347))
         virtual_screen.blit(telemetry_font.render("YAW :", True, BLUE), (257, 347))
+        
+        # Indicateur de mode (en haut à droite)
+        mode_font = pygame.font.SysFont('Arial', 14, bold=True)
+        if USE_PHONE_SENSORS:
+            mode_text = f"🧪 TEST MODE"
+            mode_color = (70, 179, 230)
+            ip_text = f"📱 {PHONE_IP}"
+            # Vérifier si le fichier sensor_data.json est récent (connexion active)
+            try:
+                import os
+                file_age = time.time() - os.path.getmtime(SENSOR_DATA_FILE)
+                if file_age < 1.0:  # Moins d'1 seconde = connexion active
+                    status = "🟢 Connected"
+                    status_color = (80, 255, 80)
+                else:
+                    status = "🔴 Disconnected"
+                    status_color = (255, 80, 80)
+            except:
+                status = "⚪ No Data"
+                status_color = (200, 200, 200)
+        else:
+            mode_text = "🛰️ SATELLITE MODE"
+            mode_color = (255, 255, 255)
+            ip_text = ""
+            status = ""
+            status_color = (255, 255, 255)
+        
+        # Afficher le mode et le statut
+        mode_surface = mode_font.render(mode_text, True, mode_color)
+        virtual_screen.blit(mode_surface, (virtual_screen.get_width() - mode_surface.get_width() - 20, 10))
+        
+        if USE_PHONE_SENSORS:
+            ip_surface = mode_font.render(ip_text, True, (180, 200, 220))
+            virtual_screen.blit(ip_surface, (virtual_screen.get_width() - ip_surface.get_width() - 20, 30))
+            
+            status_surface = mode_font.render(status, True, status_color)
+            virtual_screen.blit(status_surface, (virtual_screen.get_width() - status_surface.get_width() - 20, 50))
         
         
         

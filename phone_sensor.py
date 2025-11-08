@@ -7,11 +7,13 @@ Lit les données du gyroscope depuis Phyphox et les écrit dans sensor_data.json
 import requests
 import json
 import time
+import sys
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
-PHONE_IP = "192.168.1.157"      # IP du téléphone (affichée dans Phyphox)
+# L'IP peut être passée en argument
+PHONE_IP = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.157"
 PHONE_PORT = 8080                # Port par défaut de Phyphox
 OUTPUT_FILE = "sensor_data.json" # Fichier pour l'interface AQUAMIS
 UPDATE_INTERVAL = 0.05           # 50ms entre chaque lecture
