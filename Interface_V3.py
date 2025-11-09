@@ -11,6 +11,8 @@ import pandas as pd
 from tkinter import filedialog
 import cv2
 import os
+import threading
+import subprocess
 
 # ============================================================
 # MODE TÉLÉPHONE - Configuration
@@ -22,11 +24,53 @@ USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
 # IP du téléphone (définie par l'utilisateur dans l'interface)
 PHONE_IP = "192.168.1.157"
 
+# URL du flux vidéo du téléphone (ex: IP Webcam sur Android)
+# Format: http://IP_DU_TELEPHONE:PORT/video
+# Avec IP Webcam: http://192.168.1.157:8080/video (ou /videofeed)
+PHONE_VIDEO_URL = "http://192.168.1.157:8080/videofeed"
+
 # Fichier JSON contenant les données des capteurs du téléphone
 # Généré par phone_sensor.py
 SENSOR_DATA_FILE = "sensor_data.json"
 # ============================================================
 
+# Global variables for phone video stream
+phone_video_frame = None
+phone_video_lock = threading.Lock()
+
+def phone_video_stream_worker(url):
+    """Worker function to capture video from phone in a separate thread."""
+    global phone_video_frame
+    cap = None
+    print(f"📱 Démarrage du thread pour le flux vidéo du téléphone depuis: {url}")
+    while True: # Boucle pour gérer la reconnexion
+        try:
+            cap = cv2.VideoCapture(url)
+            if not cap.isOpened():
+                print(f"❌ ERREUR: Impossible d'ouvrir le flux vidéo depuis {url}. Nouvelle tentative dans 5s.")
+                time.sleep(5)
+                continue
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("⚠️ Avertissement: Image non reçue. Le flux est peut-être terminé. Tentative de reconnexion...")
+                    break # Sortir pour tenter de se reconnecter
+
+                with phone_video_lock:
+                    phone_video_frame = frame
+        except Exception as e:
+            print(f"❌ Erreur dans le thread vidéo: {e}")
+        finally:
+            if cap:
+                cap.release()
+            print("Flux vidéo arrêté. Tentative de reconnexion dans 5 secondes.")
+            time.sleep(5)
+
+
+# ============================================================
+# Initialisation de Pygame
+# ============================================================
 
 # Pygame's initialization - AMIS' LOGO - Interface's name
 
@@ -696,10 +740,10 @@ def show_start_screen():
                 mode_text = "TEST MODE (Phone Sensors)" if USE_PHONE_SENSORS else "NORMAL MODE (Satellite)"
                 print(f"✅ System configured to: {mode_text}")
                 if USE_PHONE_SENSORS:
-                    print(f"📱 Phone IP: {PHONE_IP}")
+                    print(f"📱 Phone IP (Sensors): {PHONE_IP}")
+                    print(f"📹 Phone Video URL: {PHONE_VIDEO_URL}")
+                    
                     # Lancer le listener des capteurs du téléphone
-                    import subprocess
-                    import threading
                     def start_phone_listener():
                         try:
                             subprocess.Popen([sys.executable, "phone_sensor.py", PHONE_IP], 
@@ -707,6 +751,12 @@ def show_start_screen():
                         except Exception as e:
                             print(f"⚠️ Erreur lors du lancement du listener: {e}")
                     threading.Thread(target=start_phone_listener, daemon=True).start()
+
+                    # Lancer le stream vidéo du téléphone
+                    global phone_video_thread
+                    phone_video_thread = threading.Thread(target=phone_video_stream_worker, args=(PHONE_VIDEO_URL,), daemon=True)
+                    phone_video_thread.start()
+
                 transitioning = True
 
         # Draw password overlay if active
@@ -1366,31 +1416,39 @@ def main():
         
         # Central image display
         # Affichage de la vidéo
-        if video_receiver and video_receiver.frame is not None:
+        frame = None
+        
+        # Si mode téléphone, utiliser le flux vidéo du téléphone
+        if USE_PHONE_SENSORS and phone_video_frame is not None:
+            with phone_video_lock:
+                frame = phone_video_frame.copy()
+        # Sinon, utiliser le flux vidéo satellite
+        elif video_receiver and video_receiver.frame is not None:
             with video_receiver.frame_lock:
                 frame = video_receiver.frame.copy()
-            if frame is not None:
-                # Optional desaturation to improve overlay contrast
-                try:
-                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                    h, s, v = cv2.split(hsv)
-                    s = np.clip((s.astype(np.float32) * 0.85), 0, 255).astype(np.uint8)
-                    hsv_mod = cv2.merge([h, s, v])
-                    frame = cv2.cvtColor(hsv_mod, cv2.COLOR_HSV2RGB)
-                except Exception:
-                    # Fallback: direct BGR->RGB
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = np.rot90(frame)
-                frame = pygame.surfarray.make_surface(frame)
+        
+        if frame is not None:
+            # Optional desaturation to improve overlay contrast
+            try:
+                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                h, s, v = cv2.split(hsv)
+                s = np.clip((s.astype(np.float32) * 0.85), 0, 255).astype(np.uint8)
+                hsv_mod = cv2.merge([h, s, v])
+                frame = cv2.cvtColor(hsv_mod, cv2.COLOR_HSV2RGB)
+            except Exception:
+                # Fallback: direct BGR->RGB
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = np.rot90(frame)
+            frame = pygame.surfarray.make_surface(frame)
 
-                # Redimensionne l'image à (716, 476)
-                frame = pygame.transform.scale(frame, (716, 476))
-                
-                # Place l'image au centre (750, 250)
-                frame_rect = frame.get_rect(center=(750, 250))
-                
-                # Affiche l'image sur l'écran
-                virtual_screen.blit(frame, frame_rect)
+            # Redimensionne l'image à (716, 476)
+            frame = pygame.transform.scale(frame, (716, 476))
+            
+            # Place l'image au centre (750, 250)
+            frame_rect = frame.get_rect(center=(750, 250))
+            
+            # Affiche l'image sur l'écran
+            virtual_screen.blit(frame, frame_rect)
         
         # Affichage des données reçues
         if USE_PHONE_SENSORS:
