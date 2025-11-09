@@ -13,6 +13,18 @@ import cv2
 import os
 import threading
 import subprocess
+from ultralytics import YOLO
+import torch
+print("CUDA available:", torch.cuda.is_available())
+
+#------------------------------------------------------------------------------- CODE MADE BY JACQUES DOVE NOËL -------------------------------------------------------------------------------------------
+
+# Load the YOLO11 model
+model = YOLO("objet_detection_lib/yolo11n.pt").to("cuda")
+
+# Open the video file
+#D:/Videos/WIN_20241015_08_21_58_Pro.mp4
+cap = cv2.VideoCapture(0)
 
 # ============================================================
 # MODE TÉLÉPHONE - Configuration
@@ -1438,17 +1450,39 @@ def main():
             except Exception:
                 # Fallback: direct BGR->RGB
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = np.rot90(frame)
-            frame = pygame.surfarray.make_surface(frame)
+            # At this point `frame` is in RGB (converted above). Run detection on
+            # the unrotated image so annotations have the correct orientation.
+            try:
+                frame_for_model = np.ascontiguousarray(frame)
+                results = model.track(frame_for_model, persist=True)
+                annotated_frame = results[0].plot()
+                if annotated_frame is not None:
+                    display_img = annotated_frame
+                else:
+                    display_img = frame
+            except Exception as e:
+                # If tracking fails, keep using the plain frame
+                print("Tracking/Annotator error:", e)
+                display_img = frame
+
+            # Convert the numpy image (H, W, 3) to the format expected by
+            # pygame.surfarray.make_surface which requires (W, H, 3).
+            try:
+                disp_arr = np.transpose(display_img, (1, 0, 2))
+                disp_arr = np.ascontiguousarray(disp_arr)
+                frame_surface = pygame.surfarray.make_surface(disp_arr)
+            except Exception as e:
+                # Fallback: if transpose fails for any reason, try to make a
+                # surface from the raw array (may be mirrored/rotated).
+                print("Surface conversion error:", e)
+                fallback = np.ascontiguousarray(display_img)
+                frame_surface = pygame.surfarray.make_surface(fallback)
 
             # Redimensionne l'image à (716, 476)
-            frame = pygame.transform.scale(frame, (716, 476))
-            
+            frame_surface = pygame.transform.scale(frame_surface, (716, 476))
             # Place l'image au centre (750, 250)
-            frame_rect = frame.get_rect(center=(750, 250))
-            
-            # Affiche l'image sur l'écran
-            virtual_screen.blit(frame, frame_rect)
+            frame_rect = frame_surface.get_rect(center=(750, 250))
+            virtual_screen.blit(frame_surface, frame_rect)
         
         # Affichage des données reçues
         if USE_PHONE_SENSORS:
