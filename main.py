@@ -20,7 +20,7 @@ print("CUDA available:", torch.cuda.is_available())
 #------------------------------------------------------------------------------- CODE MADE BY JACQUES DOVE NOËL -------------------------------------------------------------------------------------------
 
 # Load the YOLO11 model
-model = YOLO("objet_detection_lib/yolo11n.pt").to("cuda")
+model = YOLO("object_detection_lib/yolo11n.pt").to("cuda")
 
 # Open the video file
 #D:/Videos/WIN_20241015_08_21_58_Pro.mp4
