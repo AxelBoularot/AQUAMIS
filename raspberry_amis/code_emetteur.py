@@ -31,7 +31,7 @@ class VideoStream:
             self.camera.release()
 
 class SocketManager:
-    def __init__(self, host='192.168.1.108', video_port=9999, data_port=8888):
+    def __init__(self, host='10.46.67.14', video_port=9999, data_port=8888):
         self.host = host
         self.video_port = video_port
         self.data_port = data_port

@@ -1,0 +1,11 @@
+# vérifier ce qui est ignoré
+git status
+git ls-files --others --ignored --exclude-standard
+
+# retirer les __pycache__ de l'index (sans supprimer localement)
+git rm -r --cached __pycache__
+# ou pour nettoyer tout ce qui est désormais ignoré
+git rm -r --cached .
+
+git add .
+git commit -m "Remove ignored files from repo"
