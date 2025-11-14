@@ -188,9 +188,9 @@ class Special_button:
         blur_overlay.fill((10, 18, 28, int(220 * self.fade_alpha / 255)))
         screen.blit(blur_overlay, (0, 0))
         
-        # Dimensions de la boîte de dialogue
+        # Dimensions de la boîte de dialogue (plus haute pour le mode téléphone)
         box_width = min(600, screen_width - 100)
-        box_height = 280
+        box_height = 380  # Augmenté de 280 à 380 pour plus d'espace
         box_x = (screen_width - box_width) // 2
         box_y = (screen_height - box_height) // 2
         
@@ -296,8 +296,8 @@ class Special_button:
             error_rect = error_text.get_rect(centerx=box_width // 2, top=input_y + input_height + 15)
             dialog_surface.blit(error_text, error_rect)
         
-        # Toggle Mode Test
-        toggle_y = input_y + input_height + 50
+        # Toggle Mode Test (espacement ajusté)
+        toggle_y = input_y + input_height + 45
         toggle_label_font = pygame.font.SysFont('Arial', 16, bold=True)
         toggle_label = toggle_label_font.render("🧪 Test Mode (Phone Sensors)", True, (180, 200, 220))
         toggle_label.set_alpha(self.fade_alpha)
@@ -325,7 +325,7 @@ class Special_button:
         
         # Champ de saisie IP (visible seulement si mode test activé)
         if self.test_mode:
-            ip_y = toggle_y + 50
+            ip_y = toggle_y + 45  # Espacement réduit de 50 à 45
             ip_label_font = pygame.font.SysFont('Arial', 14)
             ip_label = ip_label_font.render("Phone IP Address:", True, (180, 200, 220))
             ip_label.set_alpha(self.fade_alpha)

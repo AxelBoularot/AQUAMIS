@@ -45,7 +45,7 @@ PHONE_VIDEO_URL = "http://192.168.1.157:8080/videofeed"
 
 # Fichier JSON contenant les données des capteurs du téléphone
 # Généré par phone_sensor.py
-SENSOR_DATA_FILE = "sensor_data.json"
+SENSOR_DATA_FILE = "data/sensor_data.json"
 # ============================================================
 
 # Global variables for phone video stream
@@ -1312,6 +1312,29 @@ def main():
         virtual_screen.fill((0, 0, 0))
         button_stop.draw(virtual_screen, font)
         
+        # Lecture des données capteurs téléphone (AVANT tout affichage)
+        if USE_PHONE_SENSORS:
+            try:
+                with open(SENSOR_DATA_FILE, "r") as f:
+                    sensor_data = json.load(f)
+                roll = sensor_data.get('roll', roll)
+                pitch = sensor_data.get('pitch', pitch)
+                yaw = sensor_data.get('yaw', yaw)
+            except (FileNotFoundError, json.JSONDecodeError):
+                # If file is missing or empty, just use the last known values
+                pass
+        elif data_handler:
+            with data_handler.data_lock:
+                data_text = data_handler.received_data
+                try:
+                    if "AccX" in data_text.keys():
+                        print(data_text)
+                        roll = data_text["AngleRoll"] + 90
+                        pitch = data_text["AnglePitch"] +90
+                        yaw = data_text["AnglaYaw"]
+                except:
+                    pass
+        
         value.append([roll,pitch,yaw])
         # Graphs in Main
 
@@ -1472,30 +1495,6 @@ def main():
             frame_rect = frame_surface.get_rect(center=(750, 250))
             virtual_screen.blit(frame_surface, frame_rect)
         
-        # Affichage des données reçues
-        if USE_PHONE_SENSORS:
-            try:
-                with open(SENSOR_DATA_FILE, "r") as f:
-                    sensor_data = json.load(f)
-                roll = sensor_data.get('roll', roll)
-                pitch = sensor_data.get('pitch', pitch)
-                yaw = sensor_data.get('yaw', yaw)
-            except (FileNotFoundError, json.JSONDecodeError):
-                # If file is missing or empty, just use the last known values
-                pass
-        elif data_handler:
-            with data_handler.data_lock:
-                data_text = data_handler.received_data
-                try:
-                 if "AccX" in data_text.keys():
-                    print(data_text)
-                    roll = data_text["AngleRoll"] + 90
-                    pitch = data_text["AnglePitch"] +90
-                    yaw = data_text["AnglaYaw"]
-                except:
-                    pass
-        
-
         # Telemetry
         telemetry_font = pygame.font.SysFont('Century Schoolbook', 12)
         virtual_screen.blit(telemetry_font.render("ROLL :", True, (255,0,0)), (45, 347))
