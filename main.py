@@ -19,8 +19,11 @@ print("CUDA available:", torch.cuda.is_available())
 
 #------------------------------------------------------------------------------- CODE MADE BY JACQUES DOVE NOËL -------------------------------------------------------------------------------------------
 
+# Detect device and load the YOLO11 model onto the appropriate device
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
 # Load the YOLO11 model
-model = YOLO("object_detection_lib/yolo11n.pt").to("cuda")
+model = YOLO("object_detection_lib/yolo11n.pt").to(device)
 
 # Open the video file
 #D:/Videos/WIN_20241015_08_21_58_Pro.mp4

@@ -108,10 +108,10 @@ try:
                 
                 # Afficher les valeurs en temps réel
                 print(f"\rYaw={accumulated_angles['yaw']:7.1f}°  "
-                      f"Pitch={accumulated_angles['pitch']:7.1f}°  "
-                      f"Roll={accumulated_angles['roll']:7.1f}°  ", 
-                      end="", flush=True)
-                      
+                    f"Pitch={accumulated_angles['pitch']:7.1f}°  "
+                    f"Roll={accumulated_angles['roll']:7.1f}°  ", 
+                    end="", flush=True)
+                    
         except requests.exceptions.RequestException:
             # Ignorer les erreurs de connexion temporaires
             pass
