@@ -36,12 +36,12 @@ model = YOLO("object_detection_lib/yolo11n.pt").to(device)
 USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
 
 # IP du téléphone (définie par l'utilisateur dans l'interface)
-PHONE_IP = "192.168.1.157"
+PHONE_IP = "10.112.68.91"
 
 # URL du flux vidéo du téléphone (ex: IP Webcam sur Android)
 # Format: http://IP_DU_TELEPHONE:PORT/video
-# Avec IP Webcam: http://192.168.1.157:8080/video (ou /videofeed)
-PHONE_VIDEO_URL = "http://192.168.1.157:8080/videofeed"
+# Avec IP Webcam: http://10.112.68.91:8080/video (ou /videofeed)
+PHONE_VIDEO_URL = "http://10.112.68.91:8080/videofeed"
 
 # Fichier JSON contenant les données des capteurs du téléphone
 # Généré par phone_sensor.py

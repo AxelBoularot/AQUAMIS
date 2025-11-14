@@ -13,7 +13,7 @@ import sys
 # CONFIGURATION
 # ============================================================
 # L'IP peut être passée en argument
-PHONE_IP = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.157"
+PHONE_IP = sys.argv[1] if len(sys.argv) > 1 else "10.112.68.91"
 PHONE_PORT = 5050                # Port de Phyphox (changé de 8080 car la caméra l'utilise)
 OUTPUT_FILE = "data/sensor_data.json" # Fichier pour l'interface AQUAMIS
 UPDATE_INTERVAL = 0.05           # 50ms entre chaque lecture

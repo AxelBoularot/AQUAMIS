@@ -31,7 +31,7 @@ class Special_button:
         self.error_time = 0
         # Mode test (téléphone)
         self.test_mode = False
-        self.phone_ip = "192.168.1.157"  # IP par défaut
+        self.phone_ip = "10.112.68.91"  # IP par défaut
         self.ip_input_active = False  # Si on est en train de saisir l'IP
         self._draw_text()
 
