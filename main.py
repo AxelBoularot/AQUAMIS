@@ -172,10 +172,11 @@ SURFACE = NEUTRAL_LIGHT
 BCP = (0, 74, 124)
 
 def load_brand_font(size:int, bold:bool=False):
-    """Try loading Montserrat or Roboto; fallback to default system font.
+    """Try loading Century Schoolbook or fallback; fallback to default system font.
     Pygame relies on system-installed fonts; if unavailable, it will fallback.
     """
     preferred = [
+        ("Century Schoolbook", bold),
         ("Montserrat", bold),
         ("Roboto", bold),
         ("Arial", bold),
@@ -359,7 +360,7 @@ class CommunicationBox(pygame.sprite.Sprite):
             self.base_width = width
             self.base_height = height
             self.font = font
-            self.small_font = pygame.font.SysFont('Arial', 12)
+            self.small_font = pygame.font.SysFont('Century Schoolbook', 12)
             self.text = text
             self.icon_text = icon_text
             self.status = True  # True = OK, False = Error
@@ -673,7 +674,7 @@ def show_start_screen():
         # Titre avec police simple - RESPONSIVE
         # Taille basée sur la largeur de la fenêtre
         title_font_size = int(width * 0.06)  # 6% de la largeur
-        title_font = pygame.font.SysFont('Arial', max(30, title_font_size), bold=True)
+        title_font = pygame.font.SysFont('Century Schoolbook', max(30, title_font_size), bold=True)
         
         # Texte simple sans effet de glow - positionné à 70% de la largeur
         text_x = int(width * 0.70)
@@ -684,7 +685,7 @@ def show_start_screen():
         
         # Sous-titre moderne - RESPONSIVE
         subtitle_font_size = int(width * 0.015)  # 1.5% de la largeur
-        subtitle_font = pygame.font.SysFont('Arial', max(15, subtitle_font_size))
+        subtitle_font = pygame.font.SysFont('Century Schoolbook', max(15, subtitle_font_size))
         subtitle = subtitle_font.render("Interface of Control", True, TEXT_SECONDARY)
         subtitle_offset = int(height * 0.06)  # 6% de la hauteur sous le titre
         subtitle_rect = subtitle.get_rect(center=(text_x, text_y + subtitle_offset))
@@ -842,7 +843,7 @@ def show_loading_screen(continue_loading, get_current_step):
             pygame.draw.line(starting_screen, (70, 179, 230), start_pos, end_pos, 4)
         
         # Texte "Loading..."
-        loading_font = pygame.font.SysFont('Arial', 24)
+        loading_font = pygame.font.SysFont('Century Schoolbook', 24)
         dots = "." * ((loading_time // 15) % 4)
         loading_text = loading_font.render(f"Loading{dots}", True, (150, 170, 190))
         text_rect = loading_text.get_rect(center=(center_x, center_y + radius + 40))
@@ -850,7 +851,7 @@ def show_loading_screen(continue_loading, get_current_step):
         
         # Affichage de l'étape actuelle
         current_step = get_current_step()
-        step_font = pygame.font.SysFont('Arial', 18)
+        step_font = pygame.font.SysFont('Century Schoolbook', 18)
         step_text = step_font.render(current_step, True, (70, 179, 230))
         step_rect = step_text.get_rect(center=(center_x, center_y + radius + 75))
         starting_screen.blit(step_text, step_rect)
@@ -1162,7 +1163,7 @@ def main():
     
     all_buttons = [button_forward, button_left, button_right, button_backward,
                    button_up, button_down, button_emergency_stop, 
-                   switch_com, button_save_data,button_start]
+                   switch_com, button_save_data]
 
     all_sprites = pygame.sprite.Group()
     all_sprites.add(
@@ -1266,21 +1267,6 @@ def main():
                         data_handler.running = False
                         data_handler.join()
                         
-                if button_start.rect.collidepoint(mouse_pos):  
-                    print("🚨 START ACTIVATED!")  
-                    socket_client = SocketClient(host)
-                    video_receiver = None
-                    data_handler = None
-                    socket_client.connect()
-                    if not socket_client.running:
-                        print("Impossible de se connecter au serveur")
-                        return
-                    video_receiver = VideoReceiver(socket_client)
-                    data_handler = DataHandler(socket_client)
-                    data_handler.message_to_send = envoie
-                    data_handler.start()
-                    video_receiver.start()
-                
                 if switch_com.rect.collidepoint(mouse_pos):  
                     print("Veuillez entrer une nouvelle adresse ip")  
                     open_tk_window()
@@ -1511,13 +1497,13 @@ def main():
         
 
         # Telemetry
-        telemetry_font = pygame.font.SysFont('CenturySchoolbook', 12)
+        telemetry_font = pygame.font.SysFont('Century Schoolbook', 12)
         virtual_screen.blit(telemetry_font.render("ROLL :", True, (255,0,0)), (45, 347))
         virtual_screen.blit(telemetry_font.render("PITCH :", True, (0,255,0)), (150, 347))
         virtual_screen.blit(telemetry_font.render("YAW :", True, BLUE), (257, 347))
         
         # Indicateur de mode (en haut à droite)
-        mode_font = pygame.font.SysFont('Arial', 14, bold=True)
+        mode_font = pygame.font.SysFont('Century Schoolbook', 14, bold=True)
         if USE_PHONE_SENSORS:
             mode_text = f"🧪 TEST MODE"
             mode_color = (70, 179, 230)
