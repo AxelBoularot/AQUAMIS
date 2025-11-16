@@ -36,10 +36,8 @@ class Special_button:
         self._draw_text()
 
     def draw(self, screen, font):
-        screen.blit(self.image, self.rect.topleft)
-        text_surface = font.render(self.text, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(center=self.rect.center)
-        screen.blit(text_surface, text_rect.topleft)
+        # Ne dessiner le bouton visible que dans l'écran de démarrage, pas dans l'interface principale
+        # Vérifier si on est dans show_password_input ou show_confirmation_input
         
         if self.show_confirmation_input:
             font12 = pygame.font.SysFont('CenturySchoolBook', 12)
@@ -190,7 +188,8 @@ class Special_button:
         
         # Dimensions de la boîte de dialogue
         box_width = min(600, screen_width - 100)
-        box_height = 280
+        # Hauteur dynamique: plus grande si mode test activé
+        box_height = 400 if self.test_mode else 280
         box_x = (screen_width - box_width) // 2
         box_y = (screen_height - box_height) // 2
         

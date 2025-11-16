@@ -17,10 +17,11 @@ from ultralytics import YOLO
 import torch
 print("CUDA available:", torch.cuda.is_available())
 
-#------------------------------------------------------------------------------- CODE MADE BY JACQUES DOVE NOËL -------------------------------------------------------------------------------------------
+
 
 # Detect device and load the YOLO11 model onto the appropriate device
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# Force CPU due to RTX 5070 sm_120 architecture not having kernel support in current PyTorch build
+device = "cpu"
 print(f"Using device: {device}")
 # Load the YOLO11 model
 model = YOLO("object_detection_lib/yolo11n.pt").to(device)
@@ -28,11 +29,7 @@ model = YOLO("object_detection_lib/yolo11n.pt").to(device)
 # Open the video file
 #D:/Videos/WIN_20241015_08_21_58_Pro.mp4
 
-# ============================================================
-# MODE TÉLÉPHONE - Configuration
-# ============================================================
-# Active le mode téléphone (capteurs du téléphone via Phyphox)
-# Pour utiliser le mode satellite, mettez False
+
 USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
 
 # IP du téléphone (définie par l'utilisateur dans l'interface)
@@ -42,11 +39,9 @@ PHONE_IP = "192.168.1.157"
 # Format: http://IP_DU_TELEPHONE:PORT/video
 # Avec IP Webcam: http://192.168.1.157:8080/video (ou /videofeed)
 PHONE_VIDEO_URL = "http://192.168.1.157:8080/videofeed"
-
-# Fichier JSON contenant les données des capteurs du téléphone
-# Généré par phone_sensor.py
+# Fichier de données des capteurs du téléphone
 SENSOR_DATA_FILE = "sensor_data.json"
-# ============================================================
+
 
 # Global variables for phone video stream
 phone_video_frame = None
@@ -583,38 +578,40 @@ def draw_modern_button(surface, x, y, w, h, text, font, is_hovered, is_primary=T
     corner = 15
 
     # Couleurs de base
-    base_color = PRIMARY_BLUE if is_primary else (30, 50, 70)
-    accent_color = LIGHT_BLUE if is_primary else PRIMARY_BLUE
+    # Couleurs selon le type - inspiré du CSS rgb(0,140,255)
+    if is_primary:
+        base_color = (0, 140, 255)  # Bleu lumineux pour START
+        glow_color = (0, 140, 255)
+    else:
+        base_color = (80, 90, 110)  # Gris pour QUIT
+        glow_color = (100, 110, 130)
 
-    # Effet hover
-    pulse = 0.12 if is_hovered else 0.0
-    fill_color = lerp_color(base_color, accent_color, pulse)
-
-    # Ombre portée
-    shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-    pygame.draw.rect(shadow, (0, 0, 0, 140), shadow.get_rect(), border_radius=corner)
-    surface.blit(shadow, (rect.x + 4, rect.y + 6))
-
-    # Remplissage en dégradé subtil
-    btn_surface = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-    for i in range(rect.height):
-        t = i / max(1, rect.height - 1)
-        row = lerp_color(fill_color, (min(255, fill_color[0] + 18), min(255, fill_color[1] + 18), min(255, fill_color[2] + 20)), 0.22 * (1 - t))
-        pygame.draw.line(btn_surface, row, (0, i), (rect.width, i))
-    pygame.draw.rect(btn_surface, (255, 255, 255, 18), btn_surface.get_rect(), border_radius=corner)
-    surface.blit(btn_surface, rect.topleft)
-
-    # Bordure
-    pygame.draw.rect(surface, accent_color, rect, width=2, border_radius=corner)
-
-    # Halo au survol
+    # Effet glow multiple (box-shadow CSS: 0 0 25px, puis au hover: 5px, 25px, 50px, 100px)
     if is_hovered:
-        halo = pygame.Surface((rect.width + 16, rect.height + 16), pygame.SRCALPHA)
-        pygame.draw.rect(halo, (*accent_color, 55), halo.get_rect(), border_radius=corner + 6)
-        surface.blit(halo, (rect.x - 8, rect.y - 8))
+        # Glow intensifié au survol - réduit pour éviter trop de débordement
+        glow_layers = [
+            (40, 35),   # Couche la plus large réduite
+            (25, 30),   # Couche moyenne
+            (12, 25),   # Couche proche
+            (5, 20)     # Couche la plus proche
+        ]
+        for blur_size, alpha in glow_layers:
+            glow_surface = pygame.Surface((rect.width + blur_size * 2, rect.height + blur_size * 2), pygame.SRCALPHA)
+            glow_rect = glow_surface.get_rect()
+            pygame.draw.rect(glow_surface, (*glow_color, alpha), glow_rect, border_radius=corner + blur_size // 2)
+            surface.blit(glow_surface, (rect.x - blur_size, rect.y - blur_size))
+    else:
+        # Glow de base (0 0 25px dans le CSS)
+        glow_surface = pygame.Surface((rect.width + 30, rect.height + 30), pygame.SRCALPHA)
+        glow_rect = glow_surface.get_rect()
+        pygame.draw.rect(glow_surface, (*glow_color, 40), glow_rect, border_radius=corner + 8)
+        surface.blit(glow_surface, (rect.x - 15, rect.y - 15))
 
-    # Texte
-    label = font.render(text, True, WHITE)
+    # Bouton principal (background: rgb(0,140,255))
+    pygame.draw.rect(surface, base_color, rect, border_radius=corner)
+
+    # Texte en majuscules avec espacement (letter-spacing: 4px, uppercase)
+    label = font.render(text.upper(), True, WHITE)
     label_rect = label.get_rect(center=rect.center)
     surface.blit(label, label_rect)
 
@@ -697,10 +694,10 @@ def show_start_screen():
         # Modern buttons - centrés dynamiquement
         button_font = load_brand_font(max(16, int(24 * scale)), bold=True)
         
-        # Taille des boutons (fixe en pixels)
-        button_width = 200
-        button_height = 70
-        button_spacing = 20  # Espacement entre les boutons
+        # Taille des boutons (proportionnelle à la taille de l'écran)
+        button_width = int(width * 0.13)  # 13% de la largeur
+        button_height = int(height * 0.09)  # 9% de la hauteur
+        button_spacing = int(width * 0.04)  # 4% de la largeur pour l'espacement
         
         # Position Y des boutons (80% de la hauteur de la fenêtre)
         buttons_y = int(height * 0.8)
@@ -749,9 +746,11 @@ def show_start_screen():
             # Route events to password handler when open
             result = password_button.handle_event_start(event)
             if result == "switch_screen":
-                global USE_PHONE_SENSORS, PHONE_IP
+                global USE_PHONE_SENSORS, PHONE_IP, PHONE_VIDEO_URL
                 USE_PHONE_SENSORS = password_button.test_mode
                 PHONE_IP = password_button.phone_ip
+                # Mettre à jour l'URL vidéo avec la nouvelle IP
+                PHONE_VIDEO_URL = f"http://{PHONE_IP}:8080/videofeed"
                 mode_text = "TEST MODE (Phone Sensors)" if USE_PHONE_SENSORS else "NORMAL MODE (Satellite)"
                 print(f"✅ System configured to: {mode_text}")
                 if USE_PHONE_SENSORS:
@@ -798,78 +797,132 @@ def show_start_screen():
         pygame.time.Clock().tick(60)
 
 def show_loading_screen(continue_loading, get_current_step):
-    """Affiche un écran de chargement noir avec animation continue
+    """Affiche un écran de chargement avec effet radar/scanner circulaire animé
     continue_loading: fonction qui retourne True tant que le chargement doit continuer
     get_current_step: fonction qui retourne l'étape actuelle de chargement
     """
     width, height = starting_screen.get_size()
-    loading_time = 0
+    radar_angle = 0  # Angle de rotation du radar
     
-    while continue_loading():  # Continue tant que la fonction retourne True
+    while continue_loading():
         # Fond noir
         starting_screen.fill((0, 0, 0))
         
-        # Animation de chargement - spinner
-        loading_time += 1
-        angle = (loading_time * 6) % 360
-        
-        # Dessiner un cercle de chargement animé
         center_x = width // 2
         center_y = height // 2
-        radius = 40
+        loader_size = 150  # Taille du loader
         
-        # Cercle de fond (gris foncé)
-        pygame.draw.circle(starting_screen, (40, 40, 40), (center_x, center_y), radius, 4)
+        # Créer une surface pour le loader avec transparence
+        loader_surface = pygame.Surface((loader_size * 2, loader_size * 2), pygame.SRCALPHA)
+        loader_center = loader_size
         
-        # Arc de cercle animé (bleu)
-        arc_length = 90  # Longueur de l'arc en degrés
-        start_angle = math.radians(angle)
-        end_angle = math.radians(angle + arc_length)
+        # Cercle extérieur avec ombre (box-shadow: 25px 25px 75px)
+        shadow_surface = pygame.Surface((loader_size * 2 + 150, loader_size * 2 + 150), pygame.SRCALPHA)
+        pygame.draw.circle(shadow_surface, (0, 0, 0, 140), (loader_center + 75, loader_center + 75), loader_size, 0)
+        starting_screen.blit(shadow_surface, (center_x - loader_size - 75 + 25, center_y - loader_size - 75 + 25))
         
-        # Dessiner l'arc avec plusieurs segments
-        segments = 20
-        for i in range(segments):
-            current_angle = start_angle + (end_angle - start_angle) * i / segments
-            next_angle = start_angle + (end_angle - start_angle) * (i + 1) / segments
+        # Cercle principal (border: 1px solid #333)
+        pygame.draw.circle(loader_surface, (51, 51, 51), (loader_center, loader_center), loader_size, 1)
+        
+        # Cercle intérieur avec border dashed (#444) - simulé avec segments
+        inner_radius = loader_size - 20  # inset: 20px
+        segments = 40
+        for i in range(0, segments, 2):  # Dashed effect
+            angle1 = (i / segments) * 2 * math.pi
+            angle2 = ((i + 1) / segments) * 2 * math.pi
+            x1 = loader_center + inner_radius * math.cos(angle1)
+            y1 = loader_center + inner_radius * math.sin(angle1)
+            x2 = loader_center + inner_radius * math.cos(angle2)
+            y2 = loader_center + inner_radius * math.sin(angle2)
+            pygame.draw.line(loader_surface, (68, 68, 68), (x1, y1), (x2, y2), 1)
+        
+        # Cercle central (50px diameter) avec border dashed
+        center_radius = 25
+        for i in range(0, segments, 2):
+            angle1 = (i / segments) * 2 * math.pi
+            angle2 = ((i + 1) / segments) * 2 * math.pi
+            x1 = loader_center + center_radius * math.cos(angle1)
+            y1 = loader_center + center_radius * math.sin(angle1)
+            x2 = loader_center + center_radius * math.cos(angle2)
+            y2 = loader_center + center_radius * math.sin(angle2)
+            pygame.draw.line(loader_surface, (68, 68, 68), (x1, y1), (x2, y2), 1)
+        
+        # Ligne radar rotative (span avec border-top dashed)
+        radar_angle += 3  # Vitesse de rotation (2s pour 360° = 3° par frame à 60fps)
+        radar_rad = math.radians(radar_angle)
+        
+        # Ligne radar principale
+        radar_x = loader_center + loader_size * math.cos(radar_rad)
+        radar_y = loader_center + loader_size * math.sin(radar_rad)
+        pygame.draw.line(loader_surface, (255, 255, 255), (loader_center, loader_center), (radar_x, radar_y), 1)
+        
+        # Effet blur/glow seagreen avec fondu radial (effet scan radar)
+        glow_angle = 55  # Angle du secteur de balayage
+        glow_surface = pygame.Surface((loader_size * 2, loader_size * 2), pygame.SRCALPHA)
+        
+        # Créer un effet de scan avec fondu radial depuis le centre vers l'extérieur
+        # Diviser le secteur en plusieurs couches avec transparence décroissante
+        num_layers = 20  # Nombre de couches pour le dégradé
+        
+        for i in range(num_layers):
+            # Calculer le rayon de cette couche (du centre vers l'extérieur)
+            layer_ratio = (i + 1) / num_layers
+            layer_radius = loader_size * layer_ratio
             
-            start_pos = (
-                center_x + radius * math.cos(current_angle),
-                center_y + radius * math.sin(current_angle)
-            )
-            end_pos = (
-                center_x + radius * math.cos(next_angle),
-                center_y + radius * math.sin(next_angle)
-            )
-            pygame.draw.line(starting_screen, (70, 179, 230), start_pos, end_pos, 4)
+            # Alpha décroissant du centre (opaque) vers l'extérieur (transparent)
+            # Courbe exponentielle pour un effet de scan plus réaliste
+            alpha = int(150 * (1 - layer_ratio) ** 2)
+            
+            # Couleur seagreen avec alpha décroissant
+            layer_color = (46, 139, 87, alpha)
+            
+            # Créer les points du secteur pour cette couche
+            # Triangle avec la ligne blanche (radar_rad) au milieu du secteur
+            half_angle = math.radians(glow_angle / 2)
+            points = [
+                (loader_center, loader_center),
+                (loader_center + layer_radius * math.cos(radar_rad + half_angle), 
+                 loader_center + layer_radius * math.sin(radar_rad + half_angle)),
+                (loader_center + layer_radius * math.cos(radar_rad - half_angle), 
+                 loader_center + layer_radius * math.sin(radar_rad - half_angle))
+            ]
+            
+            pygame.draw.polygon(glow_surface, layer_color, points, 0)
+        
+        # Ajouter un blur autour du secteur pour l'effet glow
+        blur_layers = [20, 10, 5]
+        for blur_size in blur_layers:
+            blur_alpha = 15 - blur_size // 2
+            half_angle = math.radians(glow_angle / 2)
+            points = [
+                (loader_center, loader_center),
+                (loader_center + loader_size * math.cos(radar_rad + half_angle), loader_center + loader_size * math.sin(radar_rad + half_angle)),
+                (loader_center + loader_size * math.cos(radar_rad - half_angle), 
+                 loader_center + loader_size * math.sin(radar_rad - half_angle))
+            ]
+            for offset in range(-blur_size, blur_size + 1, 3):
+                offset_points = [(p[0] + offset, p[1]) for p in points]
+                if len(offset_points) >= 3:
+                    pygame.draw.polygon(glow_surface, (46, 139, 87, blur_alpha), offset_points, 0)
+        
+        loader_surface.blit(glow_surface, (0, 0))
+        
+        # Afficher le loader sur l'écran principal
+        starting_screen.blit(loader_surface, (center_x - loader_size, center_y - loader_size))
         
         # Texte "Loading..."
         loading_font = pygame.font.SysFont('Century Schoolbook', 24)
-        dots = "." * ((loading_time // 15) % 4)
+        dots = "." * ((radar_angle // 90) % 4)
         loading_text = loading_font.render(f"Loading{dots}", True, (150, 170, 190))
-        text_rect = loading_text.get_rect(center=(center_x, center_y + radius + 40))
+        text_rect = loading_text.get_rect(center=(center_x, center_y + loader_size + 40))
         starting_screen.blit(loading_text, text_rect)
         
         # Affichage de l'étape actuelle
         current_step = get_current_step()
         step_font = pygame.font.SysFont('Century Schoolbook', 18)
-        step_text = step_font.render(current_step, True, (70, 179, 230))
-        step_rect = step_text.get_rect(center=(center_x, center_y + radius + 75))
+        step_text = step_font.render(current_step, True, (46, 139, 87))  # seagreen
+        step_rect = step_text.get_rect(center=(center_x, center_y + loader_size + 75))
         starting_screen.blit(step_text, step_rect)
-        
-        # Points animés autour du spinner
-        for i in range(8):
-            dot_angle = math.radians(i * 45 + angle * 2)
-            dot_radius = radius + 15
-            dot_x = center_x + dot_radius * math.cos(dot_angle)
-            dot_y = center_y + dot_radius * math.sin(dot_angle)
-            
-            # Taille des points qui pulse
-            dot_size = 3 + int(2 * math.sin(loading_time * 0.2 + i))
-            alpha = int(150 + 105 * math.sin(loading_time * 0.2 + i))
-            
-            dot_surface = pygame.Surface((dot_size * 2, dot_size * 2), pygame.SRCALPHA)
-            pygame.draw.circle(dot_surface, (0, 90, 156, alpha), (dot_size, dot_size), dot_size)
-            starting_screen.blit(dot_surface, (dot_x - dot_size, dot_y - dot_size))
         
         pygame.display.flip()
         pygame.time.Clock().tick(60)
@@ -1149,7 +1202,7 @@ def main():
 
     # Start, Stop, Emergency Stop and Switch Com buttons
 
-    button_start          = Button(200, 630, 170, 100, 'ALREADY RUNNING', font15, WHITE, GREEN, button_action, (100,255,100), "START")
+    # button_start supprimé - le START est géré par l'écran d'accueil avec password
     button_stop           = Special_button(20, 630, 170, 100, 'STOP', font, WHITE, (139,0,0),(255,100,100), but_stop,"")
     button_emergency_stop = Button(20, 510, 350, 110, 'EMERGENCY STOP', font, WHITE, (139,0,0), button_action, (255,100,100), 
                                    "EMERGENCY STOP HAS BEEN TRIGGERED - AMIS HAS BEEN STOPPED!")
@@ -1162,7 +1215,7 @@ def main():
     # Listing sprites
     
     all_buttons = [button_forward, button_left, button_right, button_backward,
-                   button_up, button_down, button_emergency_stop, 
+                   button_up, button_down, button_stop, button_emergency_stop, 
                    switch_com, button_save_data]
 
     all_sprites = pygame.sprite.Group()
@@ -1170,7 +1223,7 @@ def main():
         button_forward, button_left, button_right, button_backward,
         switch_com, AMIS_box, button_up, button_down,
         button_save_data, button_emergency_stop,  
-        button_start, comm_box, cam_box, mpu_box, servo_box, motor_box, 
+        comm_box, cam_box, mpu_box, servo_box, motor_box, 
         pressure_sensor_box, lineh1, lineh2, lineh3, lineh4, lineh5,
         linev1, linev2, linev3, linev4
     )
@@ -1272,6 +1325,15 @@ def main():
                     open_tk_window()
                     host=load_ip()["ip"]
                     print(f"Adresse ip sélectionné : {host}")
+                    
+                    # Si en mode téléphone, mettre à jour l'IP pour Phyphox et la vidéo
+                    if USE_PHONE_SENSORS:
+                        global PHONE_IP, PHONE_VIDEO_URL
+                        PHONE_IP = host
+                        PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
+                        print(f"📱 Phone IP mis à jour : {PHONE_IP}")
+                        print(f"📹 Phone Video URL mis à jour : {PHONE_VIDEO_URL}")
+                        print("⚠️ Veuillez redémarrer l'application pour appliquer les changements")
 
                 if button_stop.is_clicked(virtual_event_pos):
                     button_stop.stop_trigger()
@@ -1310,7 +1372,6 @@ def main():
 
         # Draw everything on the virtual screen at base resolution
         virtual_screen.fill((0, 0, 0))
-        button_stop.draw(virtual_screen, font)
         
         value.append([roll,pitch,yaw])
         # Graphs in Main
@@ -1378,9 +1439,11 @@ def main():
         mouse_pos = convert_mouse_pos(pygame.mouse.get_pos(), screen)
         for button in all_buttons:
             button.update(mouse_pos)
+        all_sprites.draw(virtual_screen)
+        
+        # Dessiner button_stop après les sprites pour qu'il soit visible
         button_stop.update(mouse_pos)
         button_stop.draw(virtual_screen, font)
-        all_sprites.draw(virtual_screen)
 
         # Initialization of the areas (cube and graphs)
 
@@ -1441,11 +1504,14 @@ def main():
             # At this point `frame` is in RGB (converted above). Run detection on
             # the unrotated image so annotations have the correct orientation.
             try:
-                frame_for_model = np.ascontiguousarray(frame)
+                # YOLO attend BGR, donc reconvertir RGB -> BGR pour la détection
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                frame_for_model = np.ascontiguousarray(frame_bgr)
                 results = model.track(frame_for_model, persist=True)
                 annotated_frame = results[0].plot()
                 if annotated_frame is not None:
-                    display_img = annotated_frame
+                    # annotated_frame est en BGR, reconvertir en RGB pour pygame
+                    display_img = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                 else:
                     display_img = frame
             except Exception as e:
