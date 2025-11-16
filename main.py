@@ -1735,11 +1735,16 @@ def main():
         except Exception:
             menu_height = 0
         
+        # Calculate available space for virtual_screen (after menu bar)
+        available_width = current_size[0]
+        available_height = current_size[1] - menu_height
+        
         # Calculate adjusted offsets for virtual_screen to sit below menu bar
         if current_size != (BASE_WIDTH, BASE_HEIGHT):
             # Calculate the best fit while maintaining aspect ratio
-            scale_x = current_size[0] / BASE_WIDTH
-            scale_y = current_size[1] / BASE_HEIGHT
+            # Using available space instead of total window size
+            scale_x = available_width / BASE_WIDTH
+            scale_y = available_height / BASE_HEIGHT
             scale = min(scale_x, scale_y)
             
             new_width = int(BASE_WIDTH * scale)
@@ -1747,9 +1752,9 @@ def main():
             
             scaled_surface = pygame.transform.smoothscale(virtual_screen, (new_width, new_height))
             
-            # Center the scaled surface, but add menu_height offset to y
-            x_offset = (current_size[0] - new_width) // 2
-            y_offset = (current_size[1] - new_height) // 2 + menu_height
+            # Center the scaled surface within available space, positioned below menu bar
+            x_offset = (available_width - new_width) // 2
+            y_offset = menu_height + (available_height - new_height) // 2
             
             screen.blit(scaled_surface, (x_offset, y_offset))
         else:
