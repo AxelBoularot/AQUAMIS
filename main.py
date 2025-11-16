@@ -33,13 +33,15 @@ model = YOLO("object_detection_lib/yolo11n.pt").to(device)
 USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
 
 # IP du téléphone (définie par l'utilisateur dans l'interface)
-PHONE_IP = "192.168.1.157"
+PHONE_IP = "192.168.1.100"
 
 # URL du flux vidéo du téléphone (ex: IP Webcam sur Android)
 # Format: http://IP_DU_TELEPHONE:PORT/video
 # Avec IP Webcam: http://192.168.1.157:8080/video (ou /videofeed)
 PHONE_VIDEO_URL = "http://192.168.1.157:8080/videofeed"
-# Fichier de données des capteurs du téléphone
+
+# Fichier JSON contenant les données des capteurs du téléphone
+# Généré par phone_sensor.py
 SENSOR_DATA_FILE = "sensor_data.json"
 
 
@@ -313,6 +315,107 @@ class Button(pygame.sprite.Sprite):
             print(self.message)
             if self.action:
                 self.action()
+
+class MenuBar:
+    """Simple Windows-like menu bar with dropdowns implemented in pygame.
+    Items: list of tuples (label, [(submenu_label, action), ...]) or action None
+    """
+    def __init__(self, font, items, bg_color=(40,40,40), fg_color=WHITE, hover_color=(70,70,70)):
+        self.font = font
+        self.items = items
+        self.bg_color = bg_color
+        self.fg_color = fg_color
+        self.hover_color = hover_color
+        self.spacing = 14
+        self.item_rects = []
+        self.open_index = None
+        self.hover_index = None
+        self.menu_height = 0
+
+    def _build_rects(self, screen_width):
+        """Build menu item rects dynamically based on screen width."""
+        rects = []
+        cx = 10
+        for label, submenu in self.items:
+            surf = self.font.render(label, True, self.fg_color)
+            rect = pygame.Rect(cx, 4, surf.get_width() + 16, surf.get_height() + 8)
+            rects.append((label, rect, submenu))
+            cx += rect.width + self.spacing
+        return rects
+
+    def update(self, mouse_pos):
+        self.hover_index = None
+        for i, (_, rect, _) in enumerate(self.item_rects):
+            if rect.collidepoint(mouse_pos):
+                self.hover_index = i
+                break
+
+    def draw(self, surface):
+        """Draw menu bar at top of screen, responsive to screen width."""
+        screen_width = surface.get_width()
+        
+        # Rebuild rects for current window width
+        self.item_rects = self._build_rects(screen_width)
+        
+        # Calculate bar height
+        height = 0
+        if self.item_rects:
+            height = self.item_rects[0][1].height + 8
+        self.menu_height = height + 8
+        
+        # Draw background bar full width
+        pygame.draw.rect(surface, self.bg_color, (0, 0, screen_width, self.menu_height))
+        
+        # draw items
+        for i, (label, rect, submenu) in enumerate(self.item_rects):
+            color = self.hover_color if i == self.hover_index or i == self.open_index else self.bg_color
+            pygame.draw.rect(surface, color, rect)
+            txt = self.font.render(label, True, self.fg_color)
+            surface.blit(txt, (rect.x + 8, rect.y + 4))
+
+        # draw open submenu
+        if self.open_index is not None:
+            _, parent_rect, submenu = self.item_rects[self.open_index]
+            if submenu:
+                # calculate dropdown rect
+                item_h = self.font.get_height() + 8
+                w = max((self.font.render(s[0], True, self.fg_color).get_width() for s in submenu), default=100) + 16
+                h = item_h * len(submenu)
+                drop_rect = pygame.Rect(parent_rect.x, parent_rect.y + parent_rect.height + 2, w, h)
+                pygame.draw.rect(surface, (50,50,50), drop_rect)
+                for idx, (label, action) in enumerate(submenu):
+                    r = pygame.Rect(drop_rect.x, drop_rect.y + idx * item_h, w, item_h)
+                    pygame.draw.rect(surface, (70,70,70) if r.collidepoint(pygame.mouse.get_pos()) else (50,50,50), r)
+                    surface.blit(self.font.render(label, True, self.fg_color), (r.x + 8, r.y + 4))
+
+    def handle_click(self, mouse_pos):
+        # Top item clicked?
+        for i, (_, rect, submenu) in enumerate(self.item_rects):
+            if rect.collidepoint(mouse_pos):
+                # toggle open
+                if self.open_index == i:
+                    self.open_index = None
+                else:
+                    self.open_index = i
+                return True
+
+        # If a submenu is open, check selection
+        if self.open_index is not None:
+            _, parent_rect, submenu = self.item_rects[self.open_index]
+            if submenu:
+                item_h = self.font.get_height() + 8
+                w = max(self.font.render(s[0], True, self.fg_color).get_width() for s in submenu) + 16
+                drop_rect = pygame.Rect(parent_rect.x, parent_rect.y + parent_rect.height + 2, w, item_h * len(submenu))
+                if drop_rect.collidepoint(mouse_pos):
+                    idx = (mouse_pos[1] - drop_rect.y) // item_h
+                    if 0 <= idx < len(submenu):
+                        label, action = submenu[idx]
+                        if action:
+                            action()
+                        self.open_index = None
+                        return True
+            self.open_index = None
+        return False
 
 class DecorativeBox(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, font, text_color, background_color, text, box_id='normal'):
@@ -1218,6 +1321,31 @@ def main():
                    button_up, button_down, button_stop, button_emergency_stop, 
                    switch_com, button_save_data]
 
+    # --- Top menu bar (Windows-like) ---
+    top_bar_y = 8
+    # Define menu actions
+    def action_open():
+        # Open IP dialog
+        open_tk_window()
+
+    def action_exit():
+        sys.exit()
+
+    def action_toggle_fullscreen():
+        pygame.display.toggle_fullscreen()
+
+    def action_about():
+        print("AQUAMIS - Interface v1.0")
+
+    menu_items = [
+        ("File", [("Open IP...", action_open), ("Exit", action_exit)]),
+        ("View", [("Toggle Fullscreen", action_toggle_fullscreen)]),
+        ("Tools", [("Restart Stream", lambda: print('Restart stream'))]),
+        ("Help", [("About", action_about)])
+    ]
+
+    menu_bar = MenuBar(font15, menu_items)
+
     all_sprites = pygame.sprite.Group()
     all_sprites.add(
         button_forward, button_left, button_right, button_backward,
@@ -1341,6 +1469,11 @@ def main():
                 if button_save_data.rect.collidepoint(mouse_pos):
                     open_excel_table_console(value)
                 
+                # Menu bar click handling (use raw screen coordinates so the
+                # bar is an overlay above the scaled virtual surface)
+                raw_mouse = pygame.mouse.get_pos()
+                menu_bar.handle_click(raw_mouse)
+
                 for button in all_buttons:
                     if button.rect.collidepoint(mouse_pos):
                         button.click(mouse_pos)
@@ -1437,6 +1570,9 @@ def main():
         pygame.draw.rect(virtual_screen, RED, (818, 668, 184, 54), 2)
 
         mouse_pos = convert_mouse_pos(pygame.mouse.get_pos(), screen)
+        # Update menu bar using raw screen coords (it's an overlay)
+        raw_mouse = pygame.mouse.get_pos()
+        menu_bar.update(raw_mouse)
         for button in all_buttons:
             button.update(mouse_pos)
         all_sprites.draw(virtual_screen)
@@ -1444,6 +1580,7 @@ def main():
         # Dessiner button_stop après les sprites pour qu'il soit visible
         button_stop.update(mouse_pos)
         button_stop.draw(virtual_screen, font)
+        all_sprites.draw(virtual_screen)
 
         # Initialization of the areas (cube and graphs)
 
@@ -1657,6 +1794,14 @@ def main():
                 screen.fill((0, 0, 0))
         else:
             screen.fill((0, 0, 0))
+        # Draw the menu bar first to determine its height
+        try:
+            menu_bar.draw(screen)
+            menu_height = menu_bar.menu_height
+        except Exception:
+            menu_height = 0
+        
+        # Calculate adjusted offsets for virtual_screen to sit below menu bar
         if current_size != (BASE_WIDTH, BASE_HEIGHT):
             # Calculate the best fit while maintaining aspect ratio
             scale_x = current_size[0] / BASE_WIDTH
@@ -1668,13 +1813,13 @@ def main():
             
             scaled_surface = pygame.transform.smoothscale(virtual_screen, (new_width, new_height))
             
-            # Center the scaled surface
+            # Center the scaled surface, but add menu_height offset to y
             x_offset = (current_size[0] - new_width) // 2
-            y_offset = (current_size[1] - new_height) // 2
+            y_offset = (current_size[1] - new_height) // 2 + menu_height
             
             screen.blit(scaled_surface, (x_offset, y_offset))
         else:
-            screen.blit(virtual_screen, (0, 0))
+            screen.blit(virtual_screen, (0, menu_height))
         
         # Appliquer le fondu entrant par-dessus l'interface
         if fade_in_alpha > 0:
