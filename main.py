@@ -20,7 +20,7 @@ print("CUDA available:", torch.cuda.is_available())
 
 
 # Detect device and load the YOLO11 model onto the appropriate device
-# Force CPU due to RTX 5070 sm_120 architecture not having kernel support in current PyTorch build
+# Force CPU - RTX 5070 sm_120 architecture not supported yet
 device = "cpu"
 print(f"Using device: {device}")
 # Load the YOLO11 model
@@ -37,8 +37,8 @@ PHONE_IP = "192.168.1.100"
 
 # URL du flux vidéo du téléphone (ex: IP Webcam sur Android)
 # Format: http://IP_DU_TELEPHONE:PORT/video
-# Avec IP Webcam: http://192.168.1.157:8080/video (ou /videofeed)
-PHONE_VIDEO_URL = "http://192.168.1.157:8080/videofeed"
+# Avec IP Webcam: http://192.168.1.100:8080/video (ou /videofeed)
+PHONE_VIDEO_URL = "http://192.168.1.100:8080/videofeed"
 
 # Fichier JSON contenant les données des capteurs du téléphone
 # Généré par phone_sensor.py
@@ -1506,6 +1506,27 @@ def main():
         # Draw everything on the virtual screen at base resolution
         virtual_screen.fill((0, 0, 0))
         
+         # Lire les données des capteurs AVANT de mettre à jour le cube
+        if USE_PHONE_SENSORS:
+            try:
+                with open(SENSOR_DATA_FILE, "r") as f:
+                    sensor_data = json.load(f)
+                roll = sensor_data.get('roll', roll)
+                pitch = sensor_data.get('pitch', pitch)
+                yaw = sensor_data.get('yaw', yaw)
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+        elif data_handler:
+            with data_handler.data_lock:
+                data_text = data_handler.received_data
+                try:
+                    if "AccX" in data_text.keys():
+                        roll = data_text["AngleRoll"] + 90
+                        pitch = data_text["AnglePitch"] + 90
+                        yaw = data_text["AnglaYaw"]
+                except:
+                    pass
+        
         value.append([roll,pitch,yaw])
         # Graphs in Main
 
@@ -1675,31 +1696,7 @@ def main():
             frame_rect = frame_surface.get_rect(center=(750, 250))
             virtual_screen.blit(frame_surface, frame_rect)
         
-        # Affichage des données reçues
-        if USE_PHONE_SENSORS:
-            try:
-                with open(SENSOR_DATA_FILE, "r") as f:
-                    sensor_data = json.load(f)
-                roll = sensor_data.get('roll', roll)
-                pitch = sensor_data.get('pitch', pitch)
-                yaw = sensor_data.get('yaw', yaw)
-            except (FileNotFoundError, json.JSONDecodeError):
-                # If file is missing or empty, just use the last known values
-                pass
-        elif data_handler:
-            with data_handler.data_lock:
-                data_text = data_handler.received_data
-                try:
-                 if "AccX" in data_text.keys():
-                    print(data_text)
-                    roll = data_text["AngleRoll"] + 90
-                    pitch = data_text["AnglePitch"] +90
-                    yaw = data_text["AnglaYaw"]
-                except:
-                    pass
-        
-
-        # Telemetry
+        # Telemetry (les données sont déjà lues en début de boucle)
         telemetry_font = pygame.font.SysFont('Century Schoolbook', 12)
         virtual_screen.blit(telemetry_font.render("ROLL :", True, (255,0,0)), (45, 347))
         virtual_screen.blit(telemetry_font.render("PITCH :", True, (0,255,0)), (150, 347))
