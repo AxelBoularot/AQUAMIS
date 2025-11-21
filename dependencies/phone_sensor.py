@@ -13,10 +13,14 @@ import sys
 # CONFIGURATION
 # ============================================================
 # L'IP peut être passée en argument
+<<<<<<< HEAD
 PHONE_IP = sys.argv[1] if len(sys.argv) > 1 else "10.112.68.91"
+=======
+PHONE_IP = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+>>>>>>> 7cc4c38a82cd3fef565c5306c7c93a1607db6686
 PHONE_PORT = 5050                # Port de Phyphox (changé de 8080 car la caméra l'utilise)
-OUTPUT_FILE = "data/sensor_data.json" # Fichier pour l'interface AQUAMIS
-UPDATE_INTERVAL = 0.05           # 50ms entre chaque lecture
+OUTPUT_FILE = "sensor_data.json" # Fichier pour l'interface AQUAMIS (à la racine)
+UPDATE_INTERVAL = 0.02           # 20ms entre chaque lecture (50 Hz)
 
 # ============================================================
 # PROGRAMME PRINCIPAL
@@ -73,6 +77,8 @@ accumulated_angles = {
 }
 
 # Boucle principale
+last_print_time = time.time()
+
 try:
     while True:
         try:
@@ -106,11 +112,14 @@ try:
                 with open(OUTPUT_FILE, "w") as f:
                     json.dump(accumulated_angles, f)
                 
-                # Afficher les valeurs en temps réel
-                print(f"\rYaw={accumulated_angles['yaw']:7.1f}°  "
-                    f"Pitch={accumulated_angles['pitch']:7.1f}°  "
-                    f"Roll={accumulated_angles['roll']:7.1f}°  ", 
-                    end="", flush=True)
+                # Afficher les valeurs toutes les secondes (pas à chaque itération)
+                current_time = time.time()
+                if current_time - last_print_time >= 1.0:
+                    print(f"\rYaw={accumulated_angles['yaw']:7.1f}°  "
+                        f"Pitch={accumulated_angles['pitch']:7.1f}°  "
+                        f"Roll={accumulated_angles['roll']:7.1f}°  ", 
+                        end="", flush=True)
+                    last_print_time = current_time
                     
         except requests.exceptions.RequestException:
             # Ignorer les erreurs de connexion temporaires
