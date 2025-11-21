@@ -961,7 +961,7 @@ def show_start_screen():
                     password_button.start_trigger()
                 if quit_rect.collidepoint(mouse_pos):
                     sys.exit()
-                
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                     password_button.start_trigger()
@@ -1418,6 +1418,9 @@ def main():
             for i in range(1,5):
                envoie["info_fonction"][i] = 0
 
+    def button_start_action():
+        print("\n✅ System is already running - AMIS is LIVE!")
+        
     def button_action(): 
         print("\n") # Allows for a clearer view in the terminal
         
@@ -1430,10 +1433,10 @@ def main():
 
     # Start, Stop, Emergency Stop and Switch Com buttons
 
-    # button_start supprimé - le START est géré par l'écran d'accueil avec password
-    button_stop           = Special_button(20, 630, 170, 100, 'STOP', font, WHITE, (139,0,0),(255,100,100), but_stop,"")
-    button_emergency_stop = Button(20, 510, 350, 110, 'EMERGENCY STOP', font, WHITE, (139,0,0), button_action, (255,100,100), 
-                                   "EMERGENCY STOP HAS BEEN TRIGGERED - AMIS HAS BEEN STOPPED!")
+    button_start          = Button(200, 630, 170, 100, 'ALREADY RUNNING', font15, WHITE, GREEN, button_start_action, (100,255,100), "START")
+    button_stop           = Special_button(20, 630, 170, 100, 'STOP', font, WHITE, (139,0,0),(255,100,100), starting_screen, but_stop,"")
+    button_emergency_stop = Special_button(20, 510, 350, 110, 'EMERGENCY STOP', font, WHITE, (139,0,0), (255,100,100), starting_screen, button_action, 
+                                   "EMERGENCY STOP HAS BEEN TRIGGERED")
     switch_com            = Button(20, 400, 350, 80, 'SWITCH COM', font, WHITE, button_color, button_action, BCP, "Comms have been switched!")
 
     # Display and Save Data buttons
@@ -1544,9 +1547,26 @@ def main():
                 if event.key == pygame.K_F11:
                     pygame.display.toggle_fullscreen()
                 button_stop.handle_event_stop(event)
+                result_emergency = button_emergency_stop.handle_event_emergency(event)
+                if result_emergency == "emergency_stop":
+                    # Stopper les systèmes mais rester dans l'interface
+                    print("🛑 Stopping all systems...")
+                    if not USE_PHONE_SENSORS and socket_client is not None and hasattr(socket_client, 'running') and socket_client.running:
+                        socket_client.close()
+                    if video_receiver is not None:
+                        video_receiver.running = False
+                        video_receiver.join()
+                    if data_handler is not None:
+                        data_handler.running = False
+                        data_handler.join()
+                    print("✅ All systems have been stopped safely")
                 comm_box.update_status() 
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
+                # Si l'emergency stop est actif, ignorer les clics sauf sur le dialogue
+                if button_emergency_stop.show_emergency_input:
+                    continue
+                    
                 mouse_pos = convert_mouse_pos(pygame.mouse.get_pos(), screen)
                 virtual_event_pos = convert_mouse_pos(event.pos, screen)
                 
@@ -1563,15 +1583,8 @@ def main():
                     input_active_rm = False
                 
                 if button_emergency_stop.rect.collidepoint(mouse_pos):  
-                    print("🚨 EMERGENCY STOP ACTIVATED!")  
-                    if socket_client.running:
-                        socket_client.close()
-                    if video_receiver:
-                        video_receiver.running = False
-                        video_receiver.join()
-                    if data_handler:
-                        data_handler.running = False
-                        data_handler.join()
+                    print("🚨 EMERGENCY STOP BUTTON CLICKED - AWAITING CONFIRMATION...")  
+                    button_emergency_stop.emergency_trigger()
                         
                 if switch_com.rect.collidepoint(mouse_pos):  
                     print("Veuillez entrer une nouvelle adresse ip")  
@@ -1593,6 +1606,9 @@ def main():
 
                 if button_save_data.rect.collidepoint(mouse_pos):
                     open_excel_table_console(value)
+                
+                if button_start.rect.collidepoint(mouse_pos):
+                    button_start.click(mouse_pos)
                 
                 # Menu bar click handling (use raw screen coordinates so the
                 # bar is an overlay above the scaled virtual surface)
@@ -1627,7 +1643,6 @@ def main():
                 else:
                     input_text_rm += event.unicode
         
-
         # Draw everything on the virtual screen at base resolution
         virtual_screen.fill((0, 0, 0))
         
@@ -1723,9 +1738,23 @@ def main():
             button.update(mouse_pos)
         all_sprites.draw(virtual_screen)
         
-        # Dessiner button_stop après les sprites pour qu'il soit visible
+        # Dessiner button_start et button_stop après les sprites pour qu'ils soient visibles
+        button_start.update(mouse_pos)
+        button_start.image.blit(button_start.font.render(button_start.text, True, button_start.text_color), 
+                                (button_start.rect.width // 2 - button_start.font.render(button_start.text, True, button_start.text_color).get_width() // 2, 
+                                 button_start.rect.height // 2 - button_start.font.render(button_start.text, True, button_start.text_color).get_height() // 2))
+        virtual_screen.blit(button_start.image, button_start.rect)
+        
+        # Dessiner button_stop
         button_stop.update(mouse_pos)
+        virtual_screen.blit(button_stop.image, button_stop.rect)
+        # Dessiner le texte du bouton stop
+        stop_text_surface = font.render(button_stop.text, True, button_stop.text_color)
+        stop_text_rect = stop_text_surface.get_rect(center=(button_stop.rect.centerx, button_stop.rect.centery))
+        virtual_screen.blit(stop_text_surface, stop_text_rect)
+        # Appeler draw() pour les overlays si nécessaire
         button_stop.draw(virtual_screen, font)
+        
         all_sprites.draw(virtual_screen)
 
         # Initialization of the areas (cube and graphs)
@@ -2316,6 +2345,10 @@ def main():
             fade_overlay.fill((0, 0, 0))
             fade_overlay.set_alpha(fade_in_alpha)
             screen.blit(fade_overlay, (0, 0))
+        
+        # Afficher le dialogue d'emergency stop si actif
+        if button_emergency_stop.show_emergency_input:
+            button_emergency_stop.draw(screen, font)
         
         pygame.display.flip()
         clock.tick(60)
