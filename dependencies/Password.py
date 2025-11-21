@@ -42,7 +42,7 @@ class Special_button:
         if self.show_confirmation_input:
             font12 = pygame.font.SysFont('CenturySchoolBook', 12)
             pygame.draw.rect(screen, (0, 0, 0), pygame.Rect(20, 630, 170, 50))
-            text = font12.render('ENTER STOP TO CONFIRM!', True, (255, 255, 255))
+            text = font12.render('ENTER STOP OR CANCEL', True, (255, 255, 255))
             pygame.draw.rect(screen, (0, 0, 0), (20, 630, 170, 100))
             text_center = text.get_rect(center=pygame.Rect(20, 630, 170, 50).center)
             input_box = pygame.Rect(20, 680, 170, 50)
@@ -140,18 +140,23 @@ class Special_button:
         if self.show_confirmation_input:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    if self.password_text == self.correct_stop:
+                    if self.password_text.lower() == self.correct_stop:
                         print("\nSuccessfully stopped AMIS!")
                         self.show_confirmation_input = False
                         sys.exit()
                         self.password_text = ""
                         if self.action:
                             self.action()
+                    elif self.password_text.lower() == "cancel":
+                        print("\nCancelled stop action")
+                        self.show_confirmation_input = False
+                        self.password_text = ""
                     else:
-                        print("\nIncorrect input!")
+                        print("\nIncorrect input! Enter 'STOP' or 'CANCEL'")
                         self.password_text = ""
                 elif event.key == pygame.K_ESCAPE:
-                    self.show_confirmation = False
+                    self.show_confirmation_input = False
+                    self.password_text = ""
                 elif event.key == pygame.K_BACKSPACE:
                     self.password_text = self.password_text[:-1]
                 else:

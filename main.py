@@ -1305,7 +1305,7 @@ def main():
 
     # Start, Stop, Emergency Stop and Switch Com buttons
 
-    # button_start supprimé - le START est géré par l'écran d'accueil avec password
+    button_start          = Button(200, 630, 170, 100, 'ALREADY RUNNING', font15, WHITE, GREEN, button_action, (100,255,100), "START")
     button_stop           = Special_button(20, 630, 170, 100, 'STOP', font, WHITE, (139,0,0),(255,100,100), but_stop,"")
     button_emergency_stop = Button(20, 510, 350, 110, 'EMERGENCY STOP', font, WHITE, (139,0,0), button_action, (255,100,100), 
                                    "EMERGENCY STOP HAS BEEN TRIGGERED - AMIS HAS BEEN STOPPED!")
@@ -1469,6 +1469,9 @@ def main():
                 if button_save_data.rect.collidepoint(mouse_pos):
                     open_excel_table_console(value)
                 
+                if button_start.rect.collidepoint(mouse_pos):
+                    button_start.click(mouse_pos)
+                
                 # Menu bar click handling (use raw screen coordinates so the
                 # bar is an overlay above the scaled virtual surface)
                 raw_mouse = pygame.mouse.get_pos()
@@ -1598,9 +1601,23 @@ def main():
             button.update(mouse_pos)
         all_sprites.draw(virtual_screen)
         
-        # Dessiner button_stop après les sprites pour qu'il soit visible
+        # Dessiner button_start et button_stop après les sprites pour qu'ils soient visibles
+        button_start.update(mouse_pos)
+        button_start.image.blit(button_start.font.render(button_start.text, True, button_start.text_color), 
+                                (button_start.rect.width // 2 - button_start.font.render(button_start.text, True, button_start.text_color).get_width() // 2, 
+                                 button_start.rect.height // 2 - button_start.font.render(button_start.text, True, button_start.text_color).get_height() // 2))
+        virtual_screen.blit(button_start.image, button_start.rect)
+        
+        # Dessiner button_stop
         button_stop.update(mouse_pos)
+        virtual_screen.blit(button_stop.image, button_stop.rect)
+        # Dessiner le texte du bouton stop
+        stop_text_surface = font.render(button_stop.text, True, button_stop.text_color)
+        stop_text_rect = stop_text_surface.get_rect(center=(button_stop.rect.centerx, button_stop.rect.centery))
+        virtual_screen.blit(stop_text_surface, stop_text_rect)
+        # Appeler draw() pour les overlays si nécessaire
         button_stop.draw(virtual_screen, font)
+        
         all_sprites.draw(virtual_screen)
 
         # Initialization of the areas (cube and graphs)
