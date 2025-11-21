@@ -2,9 +2,10 @@ import pygame
 import sys
 import math
 
-class Special_button:
+class Special_button(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, text, font, text_color, button_color, 
                  button_color_pressed, screen, action=None, message="", ):
+        super().__init__()
         self.rect = pygame.Rect(x, y, width, height)
         self.image_normal = pygame.Surface((width, height))
         self.image_normal.fill(button_color)
@@ -19,9 +20,11 @@ class Special_button:
         self.message = message
         self.show_password_input = False
         self.show_confirmation_input = False
+        self.show_emergency_input = False
         self.password_text = ""
         self.correct_password = "a"
         self.correct_stop = "stop"
+        self.correct_emergency = "ready"
         self.screen = screen
         # Animation variables
         self.fade_alpha = 0
@@ -51,6 +54,9 @@ class Special_button:
             password_rect = password_surface.get_rect(center=input_box.center)
             screen.blit(password_surface, password_rect.topleft)
             screen.blit(text, text_center)
+        
+        if self.show_emergency_input:
+            self._draw_modern_emergency_input(screen)
     
         if self.show_password_input:
             self._draw_modern_password_input(screen)
@@ -134,7 +140,9 @@ class Special_button:
                         if event.unicode.isdigit() or event.unicode == '.':
                             self.phone_ip += event.unicode
                     else:
-                        self.password_text += event.unicode
+                        # Accepter seulement les lettres et les chiffres
+                        if event.unicode.isalnum():
+                            self.password_text += event.unicode
     
     def handle_event_stop(self, event):
         if self.show_confirmation_input:
@@ -160,15 +168,162 @@ class Special_button:
                 elif event.key == pygame.K_BACKSPACE:
                     self.password_text = self.password_text[:-1]
                 else:
-                    self.password_text += event.unicode
+                    # Accepter seulement les lettres et les chiffres
+                    if event.unicode.isalnum():
+                        self.password_text += event.unicode
+    
+    def handle_event_emergency(self, event):
+        if self.show_emergency_input:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    if self.password_text.lower() == self.correct_emergency:
+                        print("\n🚨 EMERGENCY STOP CONFIRMED - SYSTEM STOPPED!")
+                        self.show_emergency_input = False
+                        self.password_text = ""
+                        self.target_alpha = 0
+                        # Return a signal to shutdown systems
+                        return "emergency_stop"
+                    else:
+                        print("\nIncorrect input! Enter 'READY' to confirm emergency stop")
+                        self.password_text = ""
+                elif event.key == pygame.K_BACKSPACE:
+                    self.password_text = self.password_text[:-1]
+                else:
+                    # Accepter seulement les lettres et les chiffres
+                    if event.unicode.isalnum():
+                        self.password_text += event.unicode
+        return None
     
     def stop_trigger(self):
         self.show_confirmation_input = True
+    
+    def emergency_trigger(self):
+        self.show_emergency_input = True
+        self.target_alpha = 255
+        self.error_message = ""
     
     def start_trigger(self):
         self.show_password_input = True
         self.target_alpha = 255
         self.error_message = ""
+    
+    def _draw_modern_emergency_input(self, screen):
+        """Dessine une interface de confirmation d'emergency stop avec animation de fondu"""
+        import time
+        
+        # Animation de fade in/out
+        if self.fade_alpha < self.target_alpha:
+            self.fade_alpha = min(self.fade_alpha + self.fade_speed, self.target_alpha)
+        elif self.fade_alpha > self.target_alpha:
+            self.fade_alpha = max(self.fade_alpha - self.fade_speed, self.target_alpha)
+        
+        if self.fade_alpha <= 0:
+            return
+        
+        # Dimensions de l'écran
+        screen_width, screen_height = screen.get_size()
+        
+        # Arrière-plan flou avec effet de blur simulé
+        blur_overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        blur_overlay.fill((10, 18, 28, int(220 * self.fade_alpha / 255)))
+        screen.blit(blur_overlay, (0, 0))
+        
+        # Dimensions de la boîte de dialogue
+        box_width = min(600, screen_width - 100)
+        box_height = 280
+        box_x = (screen_width - box_width) // 2
+        box_y = (screen_height - box_height) // 2
+        
+        # Surface de la boîte avec transparence
+        dialog_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
+        
+        # Ombre de la boîte
+        shadow_offset = 12
+        shadow = pygame.Surface((box_width + shadow_offset * 2, box_height + shadow_offset * 2), pygame.SRCALPHA)
+        for i in range(shadow_offset, 0, -1):
+            alpha = int(30 * (shadow_offset - i) / shadow_offset * self.fade_alpha / 255)
+            pygame.draw.rect(shadow, (0, 0, 0, alpha), 
+                           (i, i, box_width + shadow_offset * 2 - i * 2, box_height + shadow_offset * 2 - i * 2), 
+                           border_radius=20)
+        screen.blit(shadow, (box_x - shadow_offset, box_y - shadow_offset))
+        
+        # Fond de la boîte avec dégradé
+        for y in range(box_height):
+            progress = y / box_height
+            color_top = (80, 20, 20)  # Rouge foncé pour emergency
+            color_bottom = (50, 10, 10)
+            r = int(color_top[0] + (color_bottom[0] - color_top[0]) * progress)
+            g = int(color_top[1] + (color_bottom[1] - color_top[1]) * progress)
+            b = int(color_top[2] + (color_bottom[2] - color_top[2]) * progress)
+            pygame.draw.line(dialog_surface, (r, g, b, int(245 * self.fade_alpha / 255)), 
+                           (0, y), (box_width, y))
+        
+        # Bordure avec glow - couleur rouge vif pour emergency
+        border_color = (255, 0, 0, int(self.fade_alpha))
+        border_rect = pygame.Rect(0, 0, box_width, box_height)
+        pygame.draw.rect(dialog_surface, border_color, border_rect, 4, border_radius=20)
+        
+        # Titre
+        title_font = pygame.font.SysFont('CenturySchoolbook', 24, bold=True)
+        title_text = title_font.render("EMERGENCY STOP HAS BEEN TRIGGERED", True, (255, 100, 100))
+        title_text.set_alpha(self.fade_alpha)
+        title_rect = title_text.get_rect(centerx=box_width // 2, top=20)
+        dialog_surface.blit(title_text, title_rect)
+        
+        # Sous-titre
+        subtitle_font = pygame.font.SysFont('CenturySchoolbook', 16)
+        subtitle_text = subtitle_font.render("AMIS was temporarily stopped. Type 'Ready' to come back to the interface.", True, (200, 100, 100))
+        subtitle_text.set_alpha(self.fade_alpha)
+        subtitle_rect = subtitle_text.get_rect(centerx=box_width // 2, top=65)
+        dialog_surface.blit(subtitle_text, subtitle_rect)
+        
+        # Champ de saisie
+        input_width = box_width - 80
+        input_height = 55
+        input_x = 40
+        input_y = 120
+        
+        # Fond du champ de saisie
+        input_bg = pygame.Surface((input_width, input_height), pygame.SRCALPHA)
+        pygame.draw.rect(input_bg, (70, 40, 40, int(200 * self.fade_alpha / 255)), 
+                        (0, 0, input_width, input_height), border_radius=10)
+        dialog_surface.blit(input_bg, (input_x, input_y))
+        
+        # Bordure du champ avec animation
+        border_glow = int(100 + 50 * math.sin(time.time() * 3))
+        pygame.draw.rect(dialog_surface, (255, 0, 0, int(border_glow * self.fade_alpha / 255)), 
+                        (input_x, input_y, input_width, input_height), 2, border_radius=10)
+        
+        # Texte du champ
+        input_font = pygame.font.SysFont('Arial', 24)
+        
+        # Curseur clignotant
+        display_text = self.password_text
+        if int(time.time() * 2) % 2 == 0:
+            display_text += "|"
+        
+        input_display = input_font.render(display_text, True, (255, 100, 100))
+        input_display.set_alpha(self.fade_alpha)
+        input_rect = input_display.get_rect(centery=input_y + input_height // 2, left=input_x + 20)
+        dialog_surface.blit(input_display, input_rect)
+        
+        # Message d'erreur si incorrect
+        if self.error_message and time.time() - self.error_time < 2:
+            error_font = pygame.font.SysFont('Arial', 14)
+            error_text = error_font.render(self.error_message, True, (255, 100, 100))
+            error_text.set_alpha(self.fade_alpha)
+            error_rect = error_text.get_rect(centerx=box_width // 2, top=input_y + input_height + 15)
+            dialog_surface.blit(error_text, error_rect)
+        
+        # Instructions
+        hint_font = pygame.font.SysFont('Arial', 13)
+        hint_text = hint_font.render("Press ENTER to confirm (cannot be cancelled)", True, (150, 80, 80))
+        hint_text.set_alpha(int(self.fade_alpha * 0.8))
+        hint_rect = hint_text.get_rect(centerx=box_width // 2, bottom=box_height - 20)
+        dialog_surface.blit(hint_text, hint_rect)
+        
+        # Blit de la boîte de dialogue sur l'écran
+        screen.blit(dialog_surface, (box_x, box_y))
     
     def _draw_modern_password_input(self, screen):
         """Dessine une interface moderne de mot de passe avec animation de fondu"""
