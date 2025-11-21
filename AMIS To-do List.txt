@@ -1,7 +1,0 @@
-Déplacements pressables plutôt que clickable (ou Rework pour prendre les angles d'Euler)
-Rework EMERGENCY Stop et Stop 
-enlever les graduations des axes du graphique
-Link les go/no-go
-window full screen (adaptable)
-
-
