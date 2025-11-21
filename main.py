@@ -15,16 +15,141 @@ import threading
 import subprocess
 from ultralytics import YOLO
 import torch
+import face_recognition
+import re
 print("CUDA available:", torch.cuda.is_available())
 
+#lancement de la fonctionnalité de face recognition
+# video_capture.set(5,1)
+known_face_encodings = []
+known_face_names = []
+known_faces_filenames = []
+for (dirpath, dirnames, filenames) in os.walk('test_folder/assets/'):
+    known_faces_filenames.extend(filenames)
+    break
+for filename in known_faces_filenames:
+    face = face_recognition.load_image_file('test_folder/assets/' + filename)
+    known_face_names.append(re.sub("[0-9]",'', filename[:-4]))
+    known_face_encodings.append(face_recognition.face_encodings(face)[0])
+face_locations = []
+face_encodings = []
+face_names = []
+process_this_frame = True
 
-
+id_person = {}
 # Detect device and load the YOLO11 model onto the appropriate device
 # Force CPU - RTX 5070 sm_120 architecture not supported yet
 device = "cpu"
 print(f"Using device: {device}")
 # Load the YOLO11 model
 model = YOLO("object_detection_lib/yolo11n.pt").to(device)
+
+# Utility: crop and save detected person images with tracking IDs
+def save_person_crops(frame_bgr, results, save_dir="detected_persons", max_per_frame=10):
+    """Crop person detections from a BGR frame using YOLO `results` and save them.
+    Filenames include the class label (usually 'person'), track id if present and a timestamp.
+    """
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except Exception:
+        return
+
+    if results is None or len(results) == 0:
+        return
+
+    r = results[0]
+    boxes = getattr(r, 'boxes', None)
+    if boxes is None:
+        return
+
+    # Try to obtain arrays of xyxy, cls and ids in a few different ways
+    try:
+        xyxy = boxes.xyxy.cpu().numpy()
+    except Exception:
+        try:
+            xyxy = boxes.xyxy.numpy()
+        except Exception:
+            # Fallback: try to read .xyxy attribute directly
+            xyxy = getattr(boxes, 'xyxy', None)
+    if xyxy is None:
+        return
+
+    # class indices (if available)
+    cls_array = None
+    try:
+        cls_array = boxes.cls.cpu().numpy()
+    except Exception:
+        try:
+            cls_array = boxes.cls.numpy()
+        except Exception:
+            cls_array = None
+
+    # track ids (if available)
+    ids = None
+    if hasattr(boxes, 'id'):
+        try:
+            ids = boxes.id.cpu().numpy()
+        except Exception:
+            try:
+                ids = boxes.id.numpy()
+            except Exception:
+                ids = None
+
+    # Determine the person class index from model.names if possible
+    person_class_index = None
+    try:
+        for k, v in model.names.items():
+            if str(v).lower() == 'person':
+                person_class_index = int(k)
+                break
+    except Exception:
+        person_class_index = None
+
+    saved = 0
+    for i, box in enumerate(xyxy):
+        if saved >= max_per_frame:
+            break
+        try:
+            x1, y1, x2, y2 = map(int, box[:4])
+        except Exception:
+            continue
+
+        # check cls if present: only keep 'person'
+        if cls_array is not None and person_class_index is not None:
+            try:
+                if int(cls_array[i]) != person_class_index:
+                    continue
+            except Exception:
+                pass
+
+        # otherwise try to infer label via model.names and boxes.cls when available
+        label = 'object'
+        try:
+            if cls_array is not None and hasattr(model, 'names'):
+                label = str(model.names.get(int(cls_array[i]), 'object'))
+        except Exception:
+            label = 'object'
+
+        track_id = None
+        if ids is not None:
+            try:
+                track_id = int(ids[i])
+            except Exception:
+                track_id = None
+
+        crop = frame_bgr[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
+        if crop is None or crop.size == 0:
+            continue
+
+        ts = int(time.time())
+        id_part = f"_id{track_id}" if track_id is not None else ""
+        filename = f"{label}{id_part}_{ts}_{i}.jpg"
+        out_path = os.path.join(save_dir, filename)
+        try:
+            cv2.imwrite(out_path, crop)
+            saved += 1
+        except Exception:
+            continue
 
 # Open the video file
 #D:/Videos/WIN_20241015_08_21_58_Pro.mp4
@@ -1666,7 +1791,370 @@ def main():
                 frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 frame_for_model = np.ascontiguousarray(frame_bgr)
                 results = model.track(frame_for_model, persist=True)
-                annotated_frame = results[0].plot()
+                # Save cropped person images (uses track IDs when available)
+                try:
+                    save_person_crops(frame_bgr, results, save_dir="detected_persons")
+                except Exception:
+                    pass
+                # Update id_person mapping using face recognition on tracked person boxes
+                try:
+                    def update_id_person_from_tracks(frame_bgr, results, id_person_map, known_encs, known_names, tolerance=0.55):
+                        if results is None or len(results) == 0:
+                            return
+                        r = results[0]
+                        boxes = getattr(r, 'boxes', None)
+                        if boxes is None:
+                            return
+
+                        # get xyxy, cls, ids robustly
+                        try:
+                            xyxy = boxes.xyxy.cpu().numpy()
+                        except Exception:
+                            try:
+                                xyxy = boxes.xyxy.numpy()
+                            except Exception:
+                                xyxy = getattr(boxes, 'xyxy', None)
+                        if xyxy is None:
+                            return
+
+                        cls_array = None
+                        try:
+                            cls_array = boxes.cls.cpu().numpy()
+                        except Exception:
+                            try:
+                                cls_array = boxes.cls.numpy()
+                            except Exception:
+                                cls_array = None
+
+                        ids = None
+                        if hasattr(boxes, 'id'):
+                            try:
+                                ids = boxes.id.cpu().numpy()
+                            except Exception:
+                                try:
+                                    ids = boxes.id.numpy()
+                                except Exception:
+                                    ids = None
+
+                        # find person class index if possible
+                        person_class_index = None
+                        try:
+                            for k, v in model.names.items():
+                                if str(v).lower() == 'person':
+                                    person_class_index = int(k)
+                                    break
+                        except Exception:
+                            person_class_index = None
+
+                        for i, box in enumerate(xyxy):
+                            try:
+                                x1, y1, x2, y2 = map(int, box[:4])
+                            except Exception:
+                                continue
+
+                            # skip non-persons when class info available
+                            if cls_array is not None and person_class_index is not None:
+                                try:
+                                    if int(cls_array[i]) != person_class_index:
+                                        continue
+                                except Exception:
+                                    pass
+
+                            track_id = None
+                            if ids is not None:
+                                try:
+                                    track_id = int(ids[i])
+                                except Exception:
+                                    track_id = None
+
+                            # If we already know this id is a person, skip
+                            if track_id is not None and id_person_map.get(track_id) and id_person_map.get(track_id) != 'Unknown':
+                                continue
+
+                            # Crop from base BGR frame
+                            h, w = frame_bgr.shape[:2]
+                            x1c = max(0, min(w-1, x1))
+                            x2c = max(0, min(w, x2))
+                            y1c = max(0, min(h-1, y1))
+                            y2c = max(0, min(h, y2))
+                            if x2c <= x1c or y2c <= y1c:
+                                continue
+                            crop_bgr = frame_bgr[y1c:y2c, x1c:x2c]
+                            if crop_bgr is None or crop_bgr.size == 0:
+                                continue
+
+                            # Convert to RGB for face_recognition
+                            try:
+                                crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+                            except Exception:
+                                crop_rgb = crop_bgr[:, :, ::-1]
+
+                            # Run face detection/encoding on crop
+                            try:
+                                locs = face_recognition.face_locations(crop_rgb)
+                                encs = face_recognition.face_encodings(crop_rgb, locs)
+                            except Exception:
+                                locs = []
+                                encs = []
+
+                            name_for_id = 'Unknown'
+                            if len(encs) > 0:
+                                # compare to known faces
+                                for enc in encs:
+                                    try:
+                                        matches = face_recognition.compare_faces(known_encs, enc, tolerance=tolerance)
+                                        dists = face_recognition.face_distance(known_encs, enc)
+                                        if len(dists) > 0:
+                                            best_idx = np.argmin(dists)
+                                            if matches[best_idx]:
+                                                name_for_id = known_names[best_idx]
+                                                break
+                                    except Exception:
+                                        continue
+
+                            # Update mapping only if we have a track_id
+                            if track_id is not None:
+                                id_person_map[track_id] = name_for_id
+
+                    update_id_person_from_tracks(frame_bgr, results, id_person, known_face_encodings, known_face_names)
+                    print(id_person)
+                except Exception:
+                    pass
+                # Prepare annotated_frame: inject temporary class indices so plot() shows person names
+                annotated_frame = None
+                try:
+                    r = results[0]
+                    boxes = getattr(r, 'boxes', None)
+                    original_model_names = None
+                    original_cls = None
+                    if boxes is not None:
+                        # read original cls values
+                        try:
+                            cls_vals = boxes.cls.cpu().numpy()
+                            cls_is_torch = False
+                        except Exception:
+                            try:
+                                cls_vals = boxes.cls.numpy()
+                                cls_is_torch = False
+                            except Exception:
+                                try:
+                                    cls_vals = boxes.cls
+                                    cls_is_torch = True
+                                except Exception:
+                                    cls_vals = None
+                                    cls_is_torch = False
+
+                        # copy original for restore
+                        try:
+                            original_cls = None if cls_vals is None else cls_vals.copy()
+                        except Exception:
+                            original_cls = None
+
+                        # backup model names
+                        try:
+                            original_model_names = dict(model.names)
+                        except Exception:
+                            original_model_names = None
+
+                        # build map of name->new_index to reuse indices for identical names
+                        next_index = 0
+                        try:
+                            existing_keys = [int(k) for k in model.names.keys()]
+                            next_index = max(existing_keys) + 1 if existing_keys else 0
+                        except Exception:
+                            next_index = max(model.names.keys()) + 1 if hasattr(model, 'names') else 0
+
+                        name_to_index = {}
+
+                        # attempt to get ids array
+                        ids = None
+                        if hasattr(boxes, 'id'):
+                            try:
+                                ids = boxes.id.cpu().numpy()
+                            except Exception:
+                                try:
+                                    ids = boxes.id.numpy()
+                                except Exception:
+                                    ids = None
+
+                        # modify cls_vals for detections that have a known person name
+                        if cls_vals is not None:
+                            for i in range(len(cls_vals)):
+                                track_id = None
+                                if ids is not None:
+                                    try:
+                                        track_id = int(ids[i])
+                                    except Exception:
+                                        track_id = None
+
+                                name = None
+                                if track_id is not None and track_id in id_person and id_person.get(track_id) and id_person.get(track_id) != 'Unknown':
+                                    name = id_person.get(track_id)
+
+                                if name:
+                                    # create or reuse an index for this name
+                                    if name in name_to_index:
+                                        idx = name_to_index[name]
+                                    else:
+                                        idx = next_index
+                                        name_to_index[name] = idx
+                                        next_index += 1
+                                    # assign to cls_vals
+                                    try:
+                                        cls_vals[i] = idx
+                                    except Exception:
+                                        pass
+
+                            # write back cls_vals into boxes.cls
+                            try:
+                                # if original was torch tensor, convert back
+                                if hasattr(boxes.cls, 'device') and hasattr(boxes.cls, 'dtype'):
+                                    device = boxes.cls.device
+                                    dtype = boxes.cls.dtype
+                                    import torch as _torch
+                                    boxes.cls = _torch.tensor(cls_vals, dtype=dtype, device=device)
+                                else:
+                                    try:
+                                        boxes.cls = cls_vals
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+
+                        # inject new names into model.names so plot() can use them
+                        try:
+                            for nm, idx in name_to_index.items():
+                                model.names[int(idx)] = nm
+                        except Exception:
+                            pass
+
+                    # now call plot()
+                    annotated_frame = results[0].plot()
+
+                except Exception as e:
+                    print('Annotate/modify results error:', e)
+                    import traceback
+                    traceback.print_exc()
+                    # Fallback: manually draw boxes and labels using id_person mapping
+                    try:
+                        if 'frame_bgr' in locals():
+                            fallback_frame = frame_bgr.copy()
+                        else:
+                            fallback_frame = frame.copy() if 'frame' in locals() else None
+
+                        boxes_local = locals().get('boxes', None)
+                        if boxes_local is None and 'results' in locals() and results is not None and len(results) > 0:
+                            boxes_local = getattr(results[0], 'boxes', None)
+
+                        if fallback_frame is not None and boxes_local is not None:
+                            # get xyxy robustly
+                            try:
+                                xyxy_fb = boxes_local.xyxy.cpu().numpy()
+                            except Exception:
+                                try:
+                                    xyxy_fb = boxes_local.xyxy.numpy()
+                                except Exception:
+                                    xyxy_fb = getattr(boxes_local, 'xyxy', None)
+
+                            ids_fb = None
+                            if hasattr(boxes_local, 'id'):
+                                try:
+                                    ids_fb = boxes_local.id.cpu().numpy()
+                                except Exception:
+                                    try:
+                                        ids_fb = boxes_local.id.numpy()
+                                    except Exception:
+                                        ids_fb = None
+
+                            cls_fb = None
+                            try:
+                                cls_fb = boxes_local.cls.cpu().numpy()
+                            except Exception:
+                                try:
+                                    cls_fb = boxes_local.cls.numpy()
+                                except Exception:
+                                    cls_fb = None
+
+                            if xyxy_fb is not None:
+                                for i, box in enumerate(xyxy_fb):
+                                    try:
+                                        x1, y1, x2, y2 = map(int, box[:4])
+                                    except Exception:
+                                        continue
+
+                                    track_id = None
+                                    if ids_fb is not None:
+                                        try:
+                                            track_id = int(ids_fb[i])
+                                        except Exception:
+                                            track_id = None
+
+                                    label = ''
+                                    if track_id is not None and track_id in id_person and id_person.get(track_id) and id_person.get(track_id) != 'Unknown':
+                                        label = id_person.get(track_id)
+                                    else:
+                                        # fallback to class name if available
+                                        try:
+                                            if cls_fb is not None:
+                                                cls_idx = int(cls_fb[i])
+                                                # try original_model_names first, then model.names
+                                                name_src = None
+                                                if 'original_model_names' in locals() and original_model_names is not None:
+                                                    name_src = original_model_names
+                                                else:
+                                                    name_src = getattr(model, 'names', None)
+                                                if name_src is not None:
+                                                    label = str(name_src.get(cls_idx, str(cls_idx)))
+                                        except Exception:
+                                            label = ''
+
+                                    # draw rectangle and label
+                                    try:
+                                        color = (0, 200, 0) if label else (0, 120, 255)
+                                        cv2.rectangle(fallback_frame, (x1, y1), (x2, y2), color, 2)
+                                        if label:
+                                            font = cv2.FONT_HERSHEY_SIMPLEX
+                                            font_scale = 0.6
+                                            thickness = 1
+                                            (text_w, text_h), _ = cv2.getTextSize(label, font, font_scale, thickness)
+                                            # background for text
+                                            cv2.rectangle(fallback_frame, (x1, y1 - 20), (x1 + text_w + 6, y1), color, -1)
+                                            cv2.putText(fallback_frame, label, (x1 + 3, y1 - 6), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+                                    except Exception:
+                                        pass
+                        else:
+                            # If no boxes, just reuse the original frame
+                            if fallback_frame is None:
+                                annotated_frame = None
+                            else:
+                                annotated_frame = fallback_frame
+
+                        # if we built a fallback_frame and haven't set annotated_frame yet, set it
+                        if 'fallback_frame' in locals() and annotated_frame is None:
+                            annotated_frame = fallback_frame
+                    except Exception:
+                        # If fallback overlay fails, give up and leave annotated_frame as None
+                        annotated_frame = None
+                finally:
+                    # restore original cls and model.names
+                    try:
+                        if boxes is not None and original_cls is not None:
+                            try:
+                                if hasattr(boxes.cls, 'device') and hasattr(boxes.cls, 'dtype'):
+                                    import torch as _torch
+                                    boxes.cls = _torch.tensor(original_cls, dtype=boxes.cls.dtype, device=boxes.cls.device)
+                                else:
+                                    boxes.cls = original_cls
+                            except Exception:
+                                pass
+                        if original_model_names is not None:
+                            try:
+                                model.names = dict(original_model_names)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
                 if annotated_frame is not None:
                     # annotated_frame est en BGR, reconvertir en RGB pour pygame
                     display_img = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
