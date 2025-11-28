@@ -15,28 +15,8 @@ import threading
 import subprocess
 from ultralytics import YOLO
 import torch
-import face_recognition
-import re
 print("CUDA available:", torch.cuda.is_available())
 
-#lancement de la fonctionnalité de face recognition
-# video_capture.set(5,1)
-known_face_encodings = []
-known_face_names = []
-known_faces_filenames = []
-for (dirpath, dirnames, filenames) in os.walk('test_folder/assets/'):
-    known_faces_filenames.extend(filenames)
-    break
-for filename in known_faces_filenames:
-    face = face_recognition.load_image_file('test_folder/assets/' + filename)
-    known_face_names.append(re.sub("[0-9]",'', filename[:-4]))
-    known_face_encodings.append(face_recognition.face_encodings(face)[0])
-face_locations = []
-face_encodings = []
-face_names = []
-process_this_frame = True
-
-id_person = {}
 # Detect device and load the YOLO11 model onto the appropriate device
 # Force CPU - RTX 5070 sm_120 architecture not supported yet
 device = "cpu"
