@@ -4,6 +4,11 @@ from dependencies.progress_bar import ProgressBar
 from dependencies.Graph_Pressure_Depth import Graphs_Main
 from dependencies.Graph_Angles import Graphs_Angles
 from dependencies.lib_backend import VideoReceiver, DataHandler, SocketClient
+from dependencies.Scaling import get_scaling_factors, convert_mouse_pos
+from dependencies.Font import load_brand_font, lerp_color
+from dependencies.Button import Button
+from dependencies.MenuBar import MenuBar
+from dependencies.DecorativeBox import DecorativeBox
 import numpy as np
 import tkinter as tk
 import json
@@ -92,48 +97,8 @@ pygame.display.set_icon(logo)
 BASE_WIDTH = 1500
 BASE_HEIGHT = 750
 
-def get_scaling_factors(screen):
-    """Calculate scaling factors based on current window size"""
-    current_width, current_height = screen.get_size()
-    scale_x = current_width / BASE_WIDTH
-    scale_y = current_height / BASE_HEIGHT
-    return scale_x, scale_y
-
-def scale_pos(x, y, scale_x, scale_y):
-    """Scale a position based on scaling factors"""
-    return int(x * scale_x), int(y * scale_y)
-
-def scale_size(width, height, scale_x, scale_y):
-    """Scale dimensions based on scaling factors"""
-    return int(width * scale_x), int(height * scale_y)
-
-def convert_mouse_pos(mouse_pos, screen):
-    """Convert mouse position from actual screen to virtual screen coordinates"""
-    current_size = screen.get_size()
-    if current_size == (BASE_WIDTH, BASE_HEIGHT):
-        return mouse_pos
-    
-    scale_x = current_size[0] / BASE_WIDTH
-    scale_y = current_size[1] / BASE_HEIGHT
-    scale = min(scale_x, scale_y)
-    
-    new_width = int(BASE_WIDTH * scale)
-    new_height = int(BASE_HEIGHT * scale)
-    
-    x_offset = (current_size[0] - new_width) // 2
-    y_offset = (current_size[1] - new_height) // 2
-    
-    # Convert to virtual coordinates
-    virtual_x = int((mouse_pos[0] - x_offset) / scale)
-    virtual_y = int((mouse_pos[1] - y_offset) / scale)
-    
-    # Clamp to virtual screen bounds
-    virtual_x = max(0, min(BASE_WIDTH - 1, virtual_x))
-    virtual_y = max(0, min(BASE_HEIGHT - 1, virtual_y))
-    
-    return (virtual_x, virtual_y)
-
 """Brand palette & typography helpers (IPSA / AMIS guideline)"""
+
 # Primary brand colors
 PRIMARY_BLUE = (0x00, 0x5A, 0x9C)   # #005A9C Bleu foncé IPSA
 LIGHT_BLUE   = (0x46, 0xB3, 0xE6)   # #46B3E6 Bleu clair AMIS
@@ -166,197 +131,8 @@ SURFACE = NEUTRAL_LIGHT
 # Button pressed color (slightly darker primary)
 BCP = (0, 74, 124)
 
-def load_brand_font(size:int, bold:bool=False):
-    """Try loading Century Schoolbook or fallback; fallback to default system font.
-    Pygame relies on system-installed fonts; if unavailable, it will fallback.
-    """
-    preferred = [
-        ("Century Schoolbook", bold),
-        ("Montserrat", bold),
-        ("Roboto", bold),
-        ("Arial", bold),
-        (None, bold)  # pygame default
-    ]
-    for name, b in preferred:
-        try:
-            return pygame.font.SysFont(name, size, bold=b)
-        except Exception:
-            continue
-    return pygame.font.SysFont(None, size, bold=bold)
-
-# Animation helpers
-def ease_in_out_cubic(t):
-    """Easing function pour animations smooth"""
-    return 4 * t * t * t if t < 0.5 else 1 - pow(-2 * t + 2, 3) / 2
-
-def ease_out_elastic(t):
-    """Easing élastique pour effet de rebond"""
-    c4 = (2 * math.pi) / 3
-    if t == 0 or t == 1:
-        return t
-    return pow(2, -10 * t) * math.sin((t * 10 - 0.75) * c4) + 1
-
-def lerp(start, end, t):
-    """Linear interpolation entre deux valeurs"""
-    return start + (end - start) * t
-
-def lerp_color(color1, color2, t):
-    """Interpolation entre deux couleurs"""
-    return tuple(int(lerp(c1, c2, t)) for c1, c2 in zip(color1, color2))
 
 # Classes used to create buttons, decorations and communication boxes
-
-class Button(pygame.sprite.Sprite):
-    def __init__(self, x, y, width, height, text, font, text_color, button_color, action=None, button_color_pressed=BCP, message=""):
-        super().__init__()
-        self.image_normal = pygame.Surface((width, height))
-        self.image_normal.fill(button_color)
-        self.image_hovered = pygame.Surface((width, height))
-        self.image_hovered.fill(button_color_pressed)
-        self.image = self.image_normal.copy()
-        self.rect = self.image.get_rect(topleft=(x, y))
-        self.text = text
-        self.font = font
-        self.text_color = text_color
-        self.action = action
-        self.message = message
-        self._draw_text()
-
-    def _draw_text(self):
-        text_surface = self.font.render(self.text, True, self.text_color)
-        text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
-        self.image.blit(text_surface, text_rect)
-
-    def update(self, mouse_pos):
-
-        self.image = self.image_hovered.copy() if self.rect.collidepoint(mouse_pos) else self.image_normal.copy()
-        self._draw_text()
-
-    def click(self, mouse_pos):
-        if self.rect.collidepoint(mouse_pos):
-            print(self.message)
-            if self.action:
-                self.action()
-
-class MenuBar:
-    """Simple Windows-like menu bar with dropdowns implemented in pygame.
-    Items: list of tuples (label, [(submenu_label, action), ...]) or action None
-    """
-    def __init__(self, font, items, bg_color=(40,40,40), fg_color=WHITE, hover_color=(70,70,70)):
-        self.font = font
-        self.items = items
-        self.bg_color = bg_color
-        self.fg_color = fg_color
-        self.hover_color = hover_color
-        self.spacing = 14
-        self.item_rects = []
-        self.open_index = None
-        self.hover_index = None
-        self.menu_height = 0
-
-    def _build_rects(self, screen_width):
-        """Build menu item rects dynamically based on screen width."""
-        rects = []
-        cx = 10
-        for label, submenu in self.items:
-            surf = self.font.render(label, True, self.fg_color)
-            rect = pygame.Rect(cx, 4, surf.get_width() + 16, surf.get_height() + 8)
-            rects.append((label, rect, submenu))
-            cx += rect.width + self.spacing
-        return rects
-
-    def update(self, mouse_pos):
-        self.hover_index = None
-        for i, (_, rect, _) in enumerate(self.item_rects):
-            if rect.collidepoint(mouse_pos):
-                self.hover_index = i
-                break
-
-    def draw(self, surface):
-        """Draw menu bar at top of screen, responsive to screen width."""
-        screen_width = surface.get_width()
-        
-        # Rebuild rects for current window width
-        self.item_rects = self._build_rects(screen_width)
-        
-        # Calculate bar height
-        height = 0
-        if self.item_rects:
-            height = self.item_rects[0][1].height + 8
-        self.menu_height = height + 8
-        
-        # Draw background bar full width
-        pygame.draw.rect(surface, self.bg_color, (0, 0, screen_width, self.menu_height))
-        
-        # draw items
-        for i, (label, rect, submenu) in enumerate(self.item_rects):
-            color = self.hover_color if i == self.hover_index or i == self.open_index else self.bg_color
-            pygame.draw.rect(surface, color, rect)
-            txt = self.font.render(label, True, self.fg_color)
-            surface.blit(txt, (rect.x + 8, rect.y + 4))
-
-        # draw open submenu
-        if self.open_index is not None:
-            _, parent_rect, submenu = self.item_rects[self.open_index]
-            if submenu:
-                # calculate dropdown rect
-                item_h = self.font.get_height() + 8
-                w = max((self.font.render(s[0], True, self.fg_color).get_width() for s in submenu), default=100) + 16
-                h = item_h * len(submenu)
-                drop_rect = pygame.Rect(parent_rect.x, parent_rect.y + parent_rect.height + 2, w, h)
-                pygame.draw.rect(surface, (50,50,50), drop_rect)
-                for idx, (label, action) in enumerate(submenu):
-                    r = pygame.Rect(drop_rect.x, drop_rect.y + idx * item_h, w, item_h)
-                    pygame.draw.rect(surface, (70,70,70) if r.collidepoint(pygame.mouse.get_pos()) else (50,50,50), r)
-                    surface.blit(self.font.render(label, True, self.fg_color), (r.x + 8, r.y + 4))
-
-    def handle_click(self, mouse_pos):
-        # Top item clicked?
-        for i, (_, rect, submenu) in enumerate(self.item_rects):
-            if rect.collidepoint(mouse_pos):
-                # toggle open
-                if self.open_index == i:
-                    self.open_index = None
-                else:
-                    self.open_index = i
-                return True
-
-        # If a submenu is open, check selection
-        if self.open_index is not None:
-            _, parent_rect, submenu = self.item_rects[self.open_index]
-            if submenu:
-                item_h = self.font.get_height() + 8
-                w = max(self.font.render(s[0], True, self.fg_color).get_width() for s in submenu) + 16
-                drop_rect = pygame.Rect(parent_rect.x, parent_rect.y + parent_rect.height + 2, w, item_h * len(submenu))
-                if drop_rect.collidepoint(mouse_pos):
-                    idx = (mouse_pos[1] - drop_rect.y) // item_h
-                    if 0 <= idx < len(submenu):
-                        label, action = submenu[idx]
-                        if action:
-                            action()
-                        self.open_index = None
-                        return True
-            self.open_index = None
-        return False
-
-class DecorativeBox(pygame.sprite.Sprite):
-    def __init__(self, x, y, width, height, font, text_color, background_color, text, box_id='normal'):
-        super().__init__()
-        self.image = pygame.Surface((width, height))
-        self.background_color = background_color
-        self.text = text
-        self.font = font
-        self.text_color = text_color
-        self.rect = self.image.get_rect(center=(x, y))
-        self._draw_text(box_id)
-
-    def _draw_text(self, box_id='normal'):
-        fill_color = (100, 255, 100) if box_id == 'special' else self.background_color
-        self.image.fill(fill_color)
-        if self.text:
-            text_surface = self.font.render(self.text, True, self.text_color)
-            text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
-            self.image.blit(text_surface, text_rect)
 
 class CommunicationBox(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, font, text_color, ok_color, not_ok_color, text):
@@ -372,80 +148,6 @@ class CommunicationBox(pygame.sprite.Sprite):
         self.communication_ok = True
         self.text = text
         self._draw_text()
-
-    class ModernCard(pygame.sprite.Sprite):
-        """Card moderne avec glassmorphism pour les indicateurs de statut"""
-        def __init__(self, x, y, width, height, font, text, icon_text=""):
-            super().__init__()
-            self.base_width = width
-            self.base_height = height
-            self.font = font
-            self.small_font = pygame.font.SysFont('Century Schoolbook', 12)
-            self.text = text
-            self.icon_text = icon_text
-            self.status = True  # True = OK, False = Error
-            self.pulse = 0
-            self.image = pygame.Surface((width, height), pygame.SRCALPHA)
-            self.rect = self.image.get_rect(center=(x, y))
-            self._update_appearance()
-    
-        def _update_appearance(self):
-            """Dessine la card avec glassmorphism"""
-            self.image.fill((0, 0, 0, 0))
-        
-            # Status color
-            status_color = SUCCESS if self.status else ERROR
-            pulse_alpha = int(30 + 20 * math.sin(self.pulse))
-        
-            # Background glassmorphism
-            bg_surf = pygame.Surface((self.base_width, self.base_height), pygame.SRCALPHA)
-            pygame.draw.rect(bg_surf, (*CARD_BG, 180), 
-                            (0, 0, self.base_width, self.base_height), border_radius=10)
-            self.image.blit(bg_surf, (0, 0))
-        
-            # Status indicator (barre latérale)
-            indicator_width = 4
-            pygame.draw.rect(self.image, status_color,
-                            (0, 5, indicator_width, self.base_height - 10), border_radius=2)
-        
-            # Border subtil
-            border_color = lerp_color(status_color, TEXT_SECONDARY, 0.5)
-            pygame.draw.rect(self.image, (*border_color, 100),
-                            (0, 0, self.base_width, self.base_height), 2, border_radius=10)
-        
-            # Icon/Badge
-            if self.icon_text:
-                icon_size = 20
-                icon_x = 15
-                icon_y = self.base_height // 2 - icon_size // 2
-                pygame.draw.circle(self.image, (*status_color, pulse_alpha),
-                                 (icon_x + icon_size // 2, icon_y + icon_size // 2), icon_size // 2)
-                pygame.draw.circle(self.image, status_color,
-                                 (icon_x + icon_size // 2, icon_y + icon_size // 2), icon_size // 2, 2)
-        
-            # Text
-            text_x = 45 if self.icon_text else 15
-            text_surf = self.font.render(self.text, True, TEXT_PRIMARY)
-            self.image.blit(text_surf, (text_x, 8))
-        
-            # Status text
-            status_text = "OK" if self.status else "ERROR"
-            status_surf = self.small_font.render(status_text, True, status_color)
-            self.image.blit(status_surf, (text_x, self.base_height - 20))
-    
-        def update(self, mouse_pos=None):
-            """Anime la card"""
-            self.pulse += 0.1
-            if int(self.pulse * 10) % 10 == 0:  # Update appearance every ~10 frames
-                self._update_appearance()
-    
-        def update_status(self, status=None):
-            """Met à jour le statut"""
-            if status is not None:
-                self.status = status
-            else:
-                self.status = random.choice([True, False])
-            self._update_appearance()
 
     def _draw_text(self):
         fill_color = GREEN if self.communication_ok else RED
