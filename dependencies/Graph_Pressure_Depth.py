@@ -37,18 +37,8 @@ class Graphs_Main:
             self.time_stamps.pop(0)
     
     def draw_grid(self):
-        for x in range(self.x_offset, self.x_offset + self.width, self.grid_spacing):
-            pygame.draw.line(self.surface, (50, 50, 50), (x, self.y_offset), (x, self.y_offset + self.height), 1)
-        
-        for y in range(self.y_offset, self.y_offset + self.height, self.grid_spacing):
-            pygame.draw.line(self.surface, (50, 50, 50), (self.x_offset, y), (self.x_offset + self.width, y), 1)
-        
-        font = pygame.font.SysFont('Arial', 15)
-        for i in range(0, self.max_value_pressure + 1, self.max_value_pressure // 5):
-            y_pos = self.y_offset + self.height - (i / self.max_value_pressure) * self.height
-            text = font.render(str(i), True, (255, 255, 255))
-            # Position text inside the graph area, to the right of the axis
-            self.surface.blit(text, (self.x_offset + 5, y_pos - 10))
+        # Graduations/grid disabled per user request — no drawing here
+        return
     
     def draw(self):
         self.draw_grid()  

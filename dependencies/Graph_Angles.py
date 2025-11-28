@@ -32,11 +32,8 @@ class Graphs_Angles:
             self.time_stamps.pop(0)
     
     def draw_grid(self):
-        for x in range(self.x_offset, self.x_offset + self.width, self.grid_spacing):
-            pygame.draw.line(self.surface, (50, 50, 50), (x, self.y_offset), (x, self.y_offset + self.height), 1)
-        
-        for y in range(self.y_offset, self.y_offset + self.height, self.grid_spacing):
-            pygame.draw.line(self.surface, (50, 50, 50), (self.x_offset, y), (self.x_offset + self.width, y), 1)
+        # Graduations/grid disabled per user request — no drawing here
+        return
     
     def draw(self):
         self.draw_grid()

@@ -162,7 +162,7 @@ TEXT_SECONDARY = NEUTRAL_SECONDARY
 TEXT_MUTED = (140, 155, 170)
 
 # Card / surfaces
-CARD_BG = WHITE
+CARD_BG = (120, 120, 120)  # Gris plus foncé
 SURFACE = NEUTRAL_LIGHT
 
 # Button pressed color (slightly darker primary)
@@ -827,6 +827,11 @@ def show_start_screen():
 
         # Event handling
         for event in pygame.event.get():
+            # If IP modal active, let it consume events first
+            if 'IP_MODAL' in globals():
+                if ip_modal_handle_event(event):
+                    continue
+
             if event.type == pygame.QUIT:
                 sys.exit()
 
@@ -896,6 +901,10 @@ def show_start_screen():
             if transition_fade >= 255:
                 return
         
+        # Draw IP modal if active
+        if 'IP_MODAL' in globals():
+            ip_modal_draw(starting_screen)
+
         pygame.display.flip()
         pygame.time.Clock().tick(60)
 
@@ -1036,6 +1045,8 @@ def save_ip(ip_address):
     data = {"ip": ip_address}
     with open("data/data.json", "w") as f:
         json.dump(data, f)
+    # Record last saved IP for non-blocking modal flow
+    globals()['LAST_SAVED_IP'] = ip_address
     print("Adresse IP sauvegardée :", ip_address)
 
 def load_ip():
@@ -1043,31 +1054,149 @@ def load_ip():
         return json.load(f)
 
 def open_tk_window():
-    """Ouvre une fenêtre Tkinter pour saisir l'adresse IP."""
-    # Création de la fenêtre Tkinter
-    root = tk.Tk()
-    root.title("Entrer l'adresse IP")
+    """Open a Pygame-based IP modal (non-blocking initializer).
 
-    # Ajout d'un label et d'un champ de saisie
-    label = tk.Label(root, text="Entrez l'adresse IP :")
-    label.pack(padx=10, pady=5)
+    This replaces the previous Tkinter dialog. Calling this function
+    initializes `globals()['IP_MODAL']` state; the main loops handle
+    events and drawing while the modal is active so other rendering
+    (graphs, animations) continue running.
+    """
+    surf = pygame.display.get_surface()
+    if surf is None:
+        return
 
-    entry = tk.Entry(root, width=30)
-    entry.pack(padx=10, pady=5)
+    globals()['IP_MODAL'] = {
+        'input_text': '',
+        'cursor_visible': True,
+        'last_blink': pygame.time.get_ticks(),
+        'modal_w': 560,
+        'modal_h': 160,
+        'message': None,
+        'message_time': 0,
+        'close_after': None,
+    }
 
-    def on_submit():
-        ip = entry.get()
-        if ip:
-            save_ip(ip)
-        # Ferme la fenêtre Tkinter une fois l'IP sauvegardée
-        root.destroy()
 
-    # Bouton pour sauvegarder
-    submit_btn = tk.Button(root, text="Sauvegarder", command=on_submit)
-    submit_btn.pack(padx=10, pady=10)
+def validate_ip(ip_str: str) -> bool:
+    """Basic IPv4 validation (x.x.x.x with 0-255 each)."""
+    import re
+    pattern = r'^\s*(?:25[0-5]|2[0-4]\d|1?\d{1,2})(?:\.(?:25[0-5]|2[0-4]\d|1?\d{1,2})){3}\s*$'
+    return re.match(pattern, ip_str) is not None
 
-    # Lancement de la boucle principale Tkinter
-    root.mainloop()
+
+def ip_modal_handle_event(event):
+    """Handle events for the IP modal; return True if event consumed."""
+    state = globals().get('IP_MODAL')
+    if not state:
+        return False
+
+    if event.type == pygame.QUIT:
+        # Let main loop handle quitting; consume here
+        return True
+
+    if event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_ESCAPE:
+            del globals()['IP_MODAL']
+            return True
+        if event.key == pygame.K_RETURN:
+            ip = state['input_text'].strip()
+            if validate_ip(ip):
+                save_ip(ip)
+                state['message'] = 'IP enregistrée'
+                state['message_time'] = pygame.time.get_ticks()
+                state['close_after'] = pygame.time.get_ticks() + 900
+            else:
+                state['message'] = 'IP invalide'
+                state['message_time'] = pygame.time.get_ticks()
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            state['input_text'] = state['input_text'][:-1]
+            return True
+        if event.unicode and ord(event.unicode) >= 32:
+            state['input_text'] += event.unicode
+            return True
+
+    if event.type == pygame.MOUSEBUTTONDOWN:
+        mx, my = event.pos
+        surf = pygame.display.get_surface()
+        sx = (surf.get_width() - state['modal_w']) // 2
+        sy = (surf.get_height() - state['modal_h']) // 2
+        local_x, local_y = mx - sx, my - sy
+        save_btn = pygame.Rect(state['modal_w'] - 140, state['modal_h'] - 50, 110, 38)
+        cancel_btn = pygame.Rect(state['modal_w'] - 280, state['modal_h'] - 50, 110, 38)
+        if save_btn.collidepoint((local_x, local_y)):
+            ip = state['input_text'].strip()
+            if validate_ip(ip):
+                save_ip(ip)
+                state['message'] = 'IP enregistrée'
+                state['message_time'] = pygame.time.get_ticks()
+                state['close_after'] = pygame.time.get_ticks() + 900
+            else:
+                state['message'] = 'IP invalide'
+                state['message_time'] = pygame.time.get_ticks()
+            return True
+        if cancel_btn.collidepoint((local_x, local_y)):
+            del globals()['IP_MODAL']
+            return True
+
+    return False
+
+
+def ip_modal_draw(surface):
+    """Draw the IP modal over `surface` and auto-close on success."""
+    state = globals().get('IP_MODAL')
+    if not state:
+        return
+
+    now = pygame.time.get_ticks()
+    if now - state['last_blink'] > 500:
+        state['cursor_visible'] = not state['cursor_visible']
+        state['last_blink'] = now
+
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 160))
+    surface.blit(overlay, (0, 0))
+
+    mw, mh = state['modal_w'], state['modal_h']
+    modal = pygame.Surface((mw, mh))
+    modal.fill(CARD_BG)
+    pygame.draw.rect(modal, WHITE, modal.get_rect(), 2)
+
+    font = pygame.font.SysFont('Arial', 20)
+    title = font.render("Entrer l'adresse IP :", True, WHITE)
+    modal.blit(title, (18, 12))
+
+    input_rect = pygame.Rect(18, 48, mw - 36, 36)
+    pygame.draw.rect(modal, (20, 20, 20), input_rect)
+    pygame.draw.rect(modal, WHITE, input_rect, 1)
+
+    txt = state['input_text']
+    txt_surf = font.render(txt, True, WHITE)
+    modal.blit(txt_surf, (input_rect.x + 8, input_rect.y + 6))
+    if state['cursor_visible']:
+        cursor_x = input_rect.x + 8 + txt_surf.get_width()
+        pygame.draw.rect(modal, WHITE, (cursor_x, input_rect.y + 8, 2, input_rect.height - 16))
+
+    save_btn = pygame.Rect(mw - 140, mh - 50, 110, 38)
+    cancel_btn = pygame.Rect(mw - 280, mh - 50, 110, 38)
+    pygame.draw.rect(modal, (0, 120, 200), save_btn, border_radius=8)
+    pygame.draw.rect(modal, (120, 120, 120), cancel_btn, border_radius=8)
+    save_label = font.render('Sauvegarder', True, WHITE)
+    cancel_label = font.render('Annuler', True, WHITE)
+    modal.blit(save_label, (save_btn.x + (save_btn.width - save_label.get_width()) // 2, save_btn.y + (save_btn.height - save_label.get_height()) // 2))
+    modal.blit(cancel_label, (cancel_btn.x + (cancel_btn.width - cancel_label.get_width()) // 2, cancel_btn.y + (cancel_btn.height - cancel_label.get_height()) // 2))
+
+    if state.get('message'):
+        msg = state['message']
+        color = (80, 220, 80) if 'enregistr' in msg else (220, 80, 80)
+        msg_surf = font.render(msg, True, color)
+        modal.blit(msg_surf, (18, mh - 44))
+
+    sx, sy = (surface.get_width() - mw) // 2, (surface.get_height() - mh) // 2
+    surface.blit(modal, (sx, sy))
+
+    if state.get('close_after') and now >= state['close_after']:
+        del globals()['IP_MODAL']
 
 def open_excel_table_console(matrix):
     """
@@ -1411,6 +1540,10 @@ def main():
             fade_in_alpha = max(0, fade_in_alpha - 60)  # Vitesse augmentée nettement
 
         for event in pygame.event.get():
+            # If IP modal active, let it consume events first
+            if 'IP_MODAL' in globals():
+                if ip_modal_handle_event(event):
+                    continue
             if event.type == pygame.QUIT:
                 running = False
             
@@ -1464,17 +1597,6 @@ def main():
                 if switch_com.rect.collidepoint(mouse_pos):  
                     print("Veuillez entrer une nouvelle adresse ip")  
                     open_tk_window()
-                    host=load_ip()["ip"]
-                    print(f"Adresse ip sélectionné : {host}")
-                    
-                    # Si en mode téléphone, mettre à jour l'IP pour Phyphox et la vidéo
-                    if USE_PHONE_SENSORS:
-                        global PHONE_IP, PHONE_VIDEO_URL
-                        PHONE_IP = host
-                        PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
-                        print(f"📱 Phone IP mis à jour : {PHONE_IP}")
-                        print(f"📹 Phone Video URL mis à jour : {PHONE_VIDEO_URL}")
-                        print("⚠️ Veuillez redémarrer l'application pour appliquer les changements")
 
                 if button_stop.is_clicked(virtual_event_pos):
                     button_stop.stop_trigger()
@@ -1520,6 +1642,18 @@ def main():
         
         # Draw everything on the virtual screen at base resolution
         virtual_screen.fill((0, 0, 0))
+
+        # If an IP was saved by the modal, apply updates here so graphs keep running
+        if 'LAST_SAVED_IP' in globals():
+            host = globals().pop('LAST_SAVED_IP')
+            print(f"Adresse ip sélectionné : {host}")
+            if USE_PHONE_SENSORS:
+                global PHONE_IP, PHONE_VIDEO_URL
+                PHONE_IP = host
+                PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
+                print(f"📱 Phone IP mis à jour : {PHONE_IP}")
+                print(f"📹 Phone Video URL mis à jour : {PHONE_VIDEO_URL}")
+                print("⚠️ Veuillez redémarrer l'application pour appliquer les changements")
         
          # Lire les données des capteurs AVANT de mettre à jour le cube
         if USE_PHONE_SENSORS:
@@ -1861,7 +1995,11 @@ def main():
         # Afficher le dialogue d'emergency stop si actif
         if button_emergency_stop.show_emergency_input:
             button_emergency_stop.draw(screen, font)
-        
+
+        # Draw IP modal if active (non-blocking)
+        if 'IP_MODAL' in globals():
+            ip_modal_draw(screen)
+
         pygame.display.flip()
         clock.tick(60)
 
