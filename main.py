@@ -9,8 +9,6 @@ from dependencies.Font import load_brand_font, lerp_color
 from dependencies.Button import Button
 from dependencies.MenuBar import MenuBar
 from dependencies.DecorativeBox import DecorativeBox
-from dependencies.CommunicationBox import CommunicationBox   
-from dependencies.ModernParticle import ModernParticle
 import numpy as np
 import tkinter as tk
 import json
@@ -99,10 +97,50 @@ pygame.display.set_icon(logo)
 BASE_WIDTH = 1500
 BASE_HEIGHT = 750
 
-"""Brand palette & typography helpers (IPSA / AMIS guideline)"""
+def get_scaling_factors(screen):
+    """Calculate scaling factors based on current window size"""
+    current_width, current_height = screen.get_size()
+    scale_x = current_width / BASE_WIDTH
+    scale_y = current_height / BASE_HEIGHT
+    return scale_x, scale_y
 
+def scale_pos(x, y, scale_x, scale_y):
+    """Scale a position based on scaling factors"""
+    return int(x * scale_x), int(y * scale_y)
+
+def scale_size(width, height, scale_x, scale_y):
+    """Scale dimensions based on scaling factors"""
+    return int(width * scale_x), int(height * scale_y)
+
+def convert_mouse_pos(mouse_pos, screen):
+    """Convert mouse position from actual screen to virtual screen coordinates"""
+    current_size = screen.get_size()
+    if current_size == (BASE_WIDTH, BASE_HEIGHT):
+        return mouse_pos
+    
+    scale_x = current_size[0] / BASE_WIDTH
+    scale_y = current_size[1] / BASE_HEIGHT
+    scale = min(scale_x, scale_y)
+    
+    new_width = int(BASE_WIDTH * scale)
+    new_height = int(BASE_HEIGHT * scale)
+    
+    x_offset = (current_size[0] - new_width) // 2
+    y_offset = (current_size[1] - new_height) // 2
+    
+    # Convert to virtual coordinates
+    virtual_x = int((mouse_pos[0] - x_offset) / scale)
+    virtual_y = int((mouse_pos[1] - y_offset) / scale)
+    
+    # Clamp to virtual screen bounds
+    virtual_x = max(0, min(BASE_WIDTH - 1, virtual_x))
+    virtual_y = max(0, min(BASE_HEIGHT - 1, virtual_y))
+    
+    return (virtual_x, virtual_y)
+
+"""Brand palette & typography helpers (IPSA / AMIS guideline)"""
 # Primary brand colors
-PRIMARY_BLUE = (0x00, 0x5A, 0x9C)   # #005A9C Bleu foncé IPSA
+BLUE = (0x00, 0x5A, 0x9C)   # #005A9C Bleu foncé IPSA
 LIGHT_BLUE   = (0x46, 0xB3, 0xE6)   # #46B3E6 Bleu clair AMIS
 WHITE        = (0xFF, 0xFF, 0xFF)   # Blanc principal
 
@@ -116,7 +154,7 @@ WARNING = (250, 170, 40)
 SUCCESS = (30, 150, 95)
 
 # Mapped legacy names (maintain compatibility)
-BLUE = PRIMARY_BLUE
+
 YELLOW = WARNING
 RED = ERROR
 GREEN = SUCCESS
@@ -132,6 +170,162 @@ SURFACE = NEUTRAL_LIGHT
 
 # Button pressed color (slightly darker primary)
 BCP = (0, 74, 124)
+
+
+# Classes used to create buttons, decorations and communication boxes
+
+class CommunicationBox(pygame.sprite.Sprite):
+    def __init__(self, x, y, width, height, font, text_color, ok_color, not_ok_color, text):
+        super().__init__()
+        self.image_normal = pygame.Surface((width, height))
+        self.image_normal.fill(ok_color)
+        self.image_error = pygame.Surface((width, height))
+        self.image_error.fill(not_ok_color)
+        self.image = self.image_normal.copy()
+        self.rect = self.image.get_rect(center=(x, y))
+        self.font = font
+        self.text_color = text_color
+        self.communication_ok = True
+        self.text = text
+        self._draw_text()
+
+    def _draw_text(self):
+        fill_color = GREEN if self.communication_ok else RED
+        self.image.fill(fill_color)
+        text_surface = self.font.render(self.text, True, self.text_color)
+        text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
+        self.image.blit(text_surface, text_rect)
+
+    def update_status(self):
+        self.communication_ok = random.choice([True, False])
+        base_text = self.text.split(':')[0]
+        self.text = f"{base_text}: OK" if self.communication_ok else f"{base_text}: Not OK"
+        self.image = self.image_normal.copy() if self.communication_ok else self.image_error.copy()
+        self._draw_text()
+
+    def update(self, mouse_pos):
+        pass 
+
+earth_texture = pygame.image.load("picture/earth.png") 
+moon_texture = pygame.image.load("picture/moon.png") 
+
+class ModernParticle:
+    """Particule moderne avec effet de glow et mouvement fluide"""
+    def __init__(self, screen_width=BASE_WIDTH, screen_height=BASE_HEIGHT):
+        self.x_ratio = random.random()
+        self.y_ratio = random.random()
+        self.base_size = random.uniform(0.5, 2.5)
+        self.brightness = random.randint(80, 255)
+        self.twinkle_speed = random.uniform(0.3, 1.5)
+        
+        # Couleurs modernes - cyan/bleu dominants
+        self.color = random.choice([
+            LIGHT_BLUE, PRIMARY_BLUE,
+            TEXT_SECONDARY, TEXT_PRIMARY
+        ])
+        
+        # Mouvement lent et fluide
+        self.vx = random.uniform(-0.0001, 0.0001)
+        self.vy = random.uniform(-0.0001, 0.0001)
+        
+        # Glow effect
+        self.glow_intensity = random.uniform(0.3, 0.8)
+
+    def update(self):
+        """Animation de scintillement et mouvement"""
+        self.brightness += self.twinkle_speed
+        if self.brightness > 255:
+            self.brightness = 255
+            self.twinkle_speed *= -1
+        elif self.brightness < 80:
+            self.brightness = 80
+            self.twinkle_speed *= -1
+        
+        # Mouvement fluide
+        self.x_ratio += self.vx
+        self.y_ratio += self.vy
+        
+        # Wrap around
+        if self.x_ratio > 1:
+            self.x_ratio = 0
+        elif self.x_ratio < 0:
+            self.x_ratio = 1
+        if self.y_ratio > 1:
+            self.y_ratio = 0
+        elif self.y_ratio < 0:
+            self.y_ratio = 1
+
+    def draw(self, screen):
+        """Dessine la particule avec effet glow"""
+        width, height = screen.get_size()
+        x = int(self.x_ratio * width)
+        y = int(self.y_ratio * height)
+        scale = min(width / BASE_WIDTH, height / BASE_HEIGHT)
+        size = self.base_size * scale
+        
+        # Glow effect (cercles concentriques)
+        alpha = int(self.brightness)
+        glow_radius = size * 3
+        
+        for i in range(3):
+            glow_alpha = int(alpha * self.glow_intensity * (1 - i * 0.3))
+            if glow_alpha > 0:
+                glow_size = size + (glow_radius - size) * (i / 3)
+                glow_surf = pygame.Surface((glow_size * 4, glow_size * 4), pygame.SRCALPHA)
+                color_with_alpha = (*self.color[:3], glow_alpha // (i + 1))
+                pygame.draw.circle(glow_surf, color_with_alpha, 
+                                 (glow_size * 2, glow_size * 2), glow_size)
+                screen.blit(glow_surf, (x - glow_size * 2, y - glow_size * 2))
+        
+        # Core particule
+        core_surf = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
+        core_color = (*self.color[:3], alpha)
+        pygame.draw.circle(core_surf, core_color, (size * 2, size * 2), size)
+        screen.blit(core_surf, (x - size * 2, y - size * 2))
+
+
+class EarthAndMoon:
+    def __init__(self):
+        self.earth_x_ratio = 1300 / BASE_WIDTH
+        self.earth_y_ratio = 200 / BASE_HEIGHT
+        self.base_earth_size = 100
+        self.base_moon_size = 30
+        self.moon_distance_ratio = 120 / BASE_WIDTH
+        self.angle = 0
+        self.rotation_speed = 0.001
+        self.moon_z = 0
+        self.earth_rotation_angle = 0
+        self.earth_rotation_speed = 0.0005
+
+    def update(self):
+        self.angle += self.rotation_speed
+        self.earth_rotation_angle += self.earth_rotation_speed
+        
+    def draw(self, screen):
+        width, height = screen.get_size()
+        scale = min(width / BASE_WIDTH, height / BASE_HEIGHT)
+        
+        earth_x = int(self.earth_x_ratio * width)
+        earth_y = int(self.earth_y_ratio * height)
+        moon_distance = self.moon_distance_ratio * width
+        self.moon_z = math.sin(self.angle) * moon_distance
+        
+        earth_size = int(self.base_earth_size * scale)
+        scaled_earth = pygame.transform.scale(earth_texture, (earth_size, earth_size))
+        rotated_earth = pygame.transform.rotate(scaled_earth, math.degrees(self.earth_rotation_angle))
+        earth_rect = rotated_earth.get_rect(center=(earth_x, earth_y))
+        screen.blit(rotated_earth, earth_rect)
+        
+        moon_x = earth_x + math.cos(self.angle) * moon_distance
+        moon_y = earth_y + math.sin(self.angle) * moon_distance
+        base_moon_size = self.base_moon_size * scale
+        moon_size = max(5 * scale, base_moon_size * (1 - abs(self.moon_z) / moon_distance))
+        moon_alpha = int(255 * (1 - abs(self.moon_z) / moon_distance))
+        moon_surface = pygame.Surface((moon_size * 2, moon_size * 2), pygame.SRCALPHA)
+        scaled_moon = pygame.transform.scale(moon_texture, (int(moon_size * 2), int(moon_size * 2)))
+        moon_surface.blit(scaled_moon, (0, 0))
+        moon_surface.set_alpha(moon_alpha)
+        screen.blit(moon_surface, (moon_x - moon_size, moon_y - moon_size))
 
 # Create modern particles (remplace les étoiles)
 particles = [ModernParticle() for _ in range(200)]
@@ -193,7 +387,7 @@ def show_start_screen():
     transitioning = False
     
     # Prepare password button ONCE (outside the loop to keep state)
-    password_button = Special_button(200, 630, 170, 100, "START", starting_font_button, WHITE, PRIMARY_BLUE, 
+    password_button = Special_button(200, 630, 170, 100, "START", starting_font_button, WHITE, BLUE, 
                                      (0, 74, 124), starting_screen, action=lambda: None)
     
     while True:
@@ -208,7 +402,7 @@ def show_start_screen():
         starting_screen.fill(base_dark)
         for y in range(height):
             t = y / max(1, height)
-            row_color = lerp_color(base_dark, PRIMARY_BLUE, 0.18 * t)
+            row_color = lerp_color(base_dark, BLUE, 0.18 * t)
             pygame.draw.line(starting_screen, row_color, (0, y), (width, y))
 
         # Animate particles
@@ -244,7 +438,7 @@ def show_start_screen():
         # Texte simple sans effet de glow - positionné à 70% de la largeur
         text_x = int(width * 0.70)
         text_y = int(height * 0.35)
-        text_surf = title_font.render("AQUAMIS", True, PRIMARY_BLUE)
+        text_surf = title_font.render("AQUAMIS", True, BLUE)
         text_rect = text_surf.get_rect(center=(text_x, text_y))
         starting_screen.blit(text_surf, text_rect)
         
@@ -606,7 +800,6 @@ def ip_modal_handle_event(event):
 
     return False
 
-
 def ip_modal_draw(surface):
     """Draw the IP modal over `surface` and auto-close on success."""
     state = globals().get('IP_MODAL')
@@ -818,6 +1011,7 @@ def main():
     fade_in_alpha = 255
     
     # Create a virtual screen at base resolution for drawing
+
     virtual_screen = pygame.Surface((BASE_WIDTH, BASE_HEIGHT))
     clock = pygame.time.Clock()
     font  = load_brand_font(20, bold=False)
@@ -918,8 +1112,6 @@ def main():
                    button_up, button_down, button_stop, button_emergency_stop, 
                    switch_com, button_save_data]
 
-    # --- Top menu bar (Windows-like) ---
-    top_bar_y = 8
     # Define menu actions
     def action_open():
         # Open IP dialog
@@ -1033,7 +1225,7 @@ def main():
                         data_handler.running = False
                         data_handler.join()
                     print("✅ All systems have been stopped safely")
-                comm_box.update_status() 
+                comm_box.update_status()
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 # Si l'emergency stop est actif, ignorer les clics sauf sur le dialogue
@@ -1072,8 +1264,6 @@ def main():
                 if button_start.rect.collidepoint(mouse_pos):
                     button_start.click(mouse_pos)
                 
-                # Menu bar click handling (use raw screen coordinates so the
-                # bar is an overlay above the scaled virtual surface)
                 raw_mouse = pygame.mouse.get_pos()
                 menu_bar.handle_click(raw_mouse)
 
@@ -1142,6 +1332,7 @@ def main():
                     pass
         
         value.append([roll,pitch,yaw])
+
         # Graphs in Main
 
         pygame.draw.rect(virtual_screen, (30, 30, 30), (1120, 10, 370, 370))
@@ -1154,13 +1345,13 @@ def main():
         pitch_value_text = font15.render(f"PITCH: {int(pitch)} ", True, (0,255,0))
         yaw_value_text = font15.render(f"YAW: {int(yaw)} ", True, BLUE)
 
-        virtual_screen.blit(roll_value_text, (1390,50))
-        virtual_screen.blit(pitch_value_text, (1390,75))
-        virtual_screen.blit(yaw_value_text, (1390,100))
+        virtual_screen.blit(roll_value_text, (1400,75))
+        virtual_screen.blit(pitch_value_text, (1400,100))
+        virtual_screen.blit(yaw_value_text, (1400,125))
         
-        pygame.draw.rect(virtual_screen, RED, (1120,195, 255, 2))
-        pygame.draw.rect(virtual_screen, RED, (1375, 10, 2, 370))
-        pygame.draw.rect(virtual_screen, RED, (1375, 165, 115, 60),2)
+        pygame.draw.rect(virtual_screen, BLUE, (1120,195, 255, 2))
+        pygame.draw.rect(virtual_screen, BLUE, (1375, 10, 2, 370))
+        pygame.draw.rect(virtual_screen, BLUE, (1375, 165, 115, 60),2)
         graph_pressure_depth.update_graph_main()
         graph_angles.update_graph_angles(roll, pitch, yaw)
 
@@ -1174,9 +1365,9 @@ def main():
 
         pygame.draw.rect(virtual_screen, GRAY, (806, 500, 120, 85))
         pygame.draw.rect(virtual_screen, BLACK, (485, 690, 100, 40))
-        pygame.draw.rect(virtual_screen, RED, (485, 690, 100, 40), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (485, 690, 100, 40), 2)
         pygame.draw.rect(virtual_screen, BLACK, (915, 510, 100, 40))
-        pygame.draw.rect(virtual_screen, RED, (915, 510, 100, 40), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (915, 510, 100, 40), 2)
     
         speed_text_lm = font.render(input_text_lm if input_active_lm else str(speed_clock_lm.speed), True, (255, 255, 255))
         text_rect_lm = speed_text_lm.get_rect(center=(535,710))
@@ -1201,8 +1392,8 @@ def main():
 
         pygame.draw.rect(virtual_screen, GRAY, (575, 500, 120, 85))
         pygame.draw.rect(virtual_screen, GRAY, (806, 656, 120, 85))
-        pygame.draw.rect(virtual_screen, RED, (498, 518, 184, 54), 2)
-        pygame.draw.rect(virtual_screen, RED, (818, 668, 184, 54), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (498, 518, 184, 54), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (818, 668, 184, 54), 2)
 
         mouse_pos = convert_mouse_pos(pygame.mouse.get_pos(), screen)
         # Update menu bar using raw screen coords (it's an overlay)
@@ -1219,23 +1410,19 @@ def main():
                                  button_start.rect.height // 2 - button_start.font.render(button_start.text, True, button_start.text_color).get_height() // 2))
         virtual_screen.blit(button_start.image, button_start.rect)
         
-        # Dessiner button_stop
         button_stop.update(mouse_pos)
         virtual_screen.blit(button_stop.image, button_stop.rect)
-        # Dessiner le texte du bouton stop
         stop_text_surface = font.render(button_stop.text, True, button_stop.text_color)
         stop_text_rect = stop_text_surface.get_rect(center=(button_stop.rect.centerx, button_stop.rect.centery))
         virtual_screen.blit(stop_text_surface, stop_text_rect)
-        # Appeler draw() pour les overlays si nécessaire
         button_stop.draw(virtual_screen, font)
-        
         all_sprites.draw(virtual_screen)
 
         # Initialization of the areas (cube and graphs)
 
         pygame.draw.rect(virtual_screen, (30, 30, 30), (12, 12, 368, 368))
-        pygame.draw.rect(virtual_screen, RED, (10, 10, 370, 370), 2)
-        pygame.draw.rect(virtual_screen, RED, (1120, 10, 370, 370), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (10, 10, 370, 370), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (1120, 10, 370, 370), 2)
 
         # Animation and drawing of the cube
         cube_sprite_group.update(roll,pitch,yaw)
@@ -1243,14 +1430,14 @@ def main():
         
         # More Decorations for aesthetic purposes
 
-        pygame.draw.rect(virtual_screen, RED, (390, 10, 720, 480), 2)
-        pygame.draw.rect(virtual_screen, RED, (575, 585, 350, 71), 2)
-        pygame.draw.rect(virtual_screen, RED, (695, 500, 111, 240), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (390, 10, 720, 480), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (575, 585, 350, 71), 2)
+        pygame.draw.rect(virtual_screen, BLUE, (695, 500, 111, 240), 2)
         pygame.draw.rect(virtual_screen, GRAY, (585, 656, 110, 85))
-        pygame.draw.rect(virtual_screen, RED,(1120,390,370,100),2)
-        pygame.draw.rect(virtual_screen, RED, (10,390,370,100),2)
-        pygame.draw.rect(virtual_screen, RED, (10,500,370,240),2)
-        pygame.draw.rect(virtual_screen, RED, (1120,500,370,240),2)
+        pygame.draw.rect(virtual_screen, BLUE,(1120,390,370,100),2)
+        pygame.draw.rect(virtual_screen, BLUE, (10,390,370,100),2)
+        pygame.draw.rect(virtual_screen, BLUE, (10,500,370,240),2)
+        pygame.draw.rect(virtual_screen, BLUE, (1120,500,370,240),2)
         pygame.draw.rect(virtual_screen, GRAY, (390, 500, 31, 233))
         pygame.draw.rect(virtual_screen, GRAY, (390, 733, 180, 10))
         pygame.draw.rect(virtual_screen, GRAY, (390, 496, 180, 10))
@@ -1365,8 +1552,6 @@ def main():
             
             status_surface = mode_font.render(status, True, status_color)
             virtual_screen.blit(status_surface, (virtual_screen.get_width() - status_surface.get_width() - 20, 50))
-        
-        
         
         # Scale virtual screen to actual window size and display (with window-level background)
         current_size = screen.get_size()
