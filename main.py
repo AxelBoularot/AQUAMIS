@@ -9,6 +9,8 @@ from dependencies.Font import load_brand_font, lerp_color
 from dependencies.Button import Button
 from dependencies.MenuBar import MenuBar
 from dependencies.DecorativeBox import DecorativeBox
+from dependencies.CommunicationBox import CommunicationBox   
+from dependencies.ModernParticle import ModernParticle
 import numpy as np
 import tkinter as tk
 import json
@@ -131,169 +133,8 @@ SURFACE = NEUTRAL_LIGHT
 # Button pressed color (slightly darker primary)
 BCP = (0, 74, 124)
 
-
-# Classes used to create buttons, decorations and communication boxes
-
-class CommunicationBox(pygame.sprite.Sprite):
-    def __init__(self, x, y, width, height, font, text_color, ok_color, not_ok_color, text):
-        super().__init__()
-        self.image_normal = pygame.Surface((width, height))
-        self.image_normal.fill(ok_color)
-        self.image_error = pygame.Surface((width, height))
-        self.image_error.fill(not_ok_color)
-        self.image = self.image_normal.copy()
-        self.rect = self.image.get_rect(center=(x, y))
-        self.font = font
-        self.text_color = text_color
-        self.communication_ok = True
-        self.text = text
-        self._draw_text()
-
-    def _draw_text(self):
-        fill_color = GREEN if self.communication_ok else RED
-        self.image.fill(fill_color)
-        text_surface = self.font.render(self.text, True, self.text_color)
-        text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
-        self.image.blit(text_surface, text_rect)
-
-    def update_status(self):
-        self.communication_ok = random.choice([True, False])
-        base_text = self.text.split(':')[0]
-        self.text = f"{base_text}: OK" if self.communication_ok else f"{base_text}: Not OK"
-        self.image = self.image_normal.copy() if self.communication_ok else self.image_error.copy()
-        self._draw_text()
-
-    def update(self, mouse_pos):
-        pass 
-
-earth_texture = pygame.image.load("picture/earth.png") 
-moon_texture = pygame.image.load("picture/moon.png") 
-
-class ModernParticle:
-    """Particule moderne avec effet de glow et mouvement fluide"""
-    def __init__(self, screen_width=BASE_WIDTH, screen_height=BASE_HEIGHT):
-        self.x_ratio = random.random()
-        self.y_ratio = random.random()
-        self.base_size = random.uniform(0.5, 2.5)
-        self.brightness = random.randint(80, 255)
-        self.twinkle_speed = random.uniform(0.3, 1.5)
-        
-        # Couleurs modernes - cyan/bleu dominants
-        self.color = random.choice([
-            LIGHT_BLUE, PRIMARY_BLUE,
-            TEXT_SECONDARY, TEXT_PRIMARY
-        ])
-        
-        # Mouvement lent et fluide
-        self.vx = random.uniform(-0.0001, 0.0001)
-        self.vy = random.uniform(-0.0001, 0.0001)
-        
-        # Glow effect
-        self.glow_intensity = random.uniform(0.3, 0.8)
-
-    def update(self):
-        """Animation de scintillement et mouvement"""
-        self.brightness += self.twinkle_speed
-        if self.brightness > 255:
-            self.brightness = 255
-            self.twinkle_speed *= -1
-        elif self.brightness < 80:
-            self.brightness = 80
-            self.twinkle_speed *= -1
-        
-        # Mouvement fluide
-        self.x_ratio += self.vx
-        self.y_ratio += self.vy
-        
-        # Wrap around
-        if self.x_ratio > 1:
-            self.x_ratio = 0
-        elif self.x_ratio < 0:
-            self.x_ratio = 1
-        if self.y_ratio > 1:
-            self.y_ratio = 0
-        elif self.y_ratio < 0:
-            self.y_ratio = 1
-
-    def draw(self, screen):
-        """Dessine la particule avec effet glow"""
-        width, height = screen.get_size()
-        x = int(self.x_ratio * width)
-        y = int(self.y_ratio * height)
-        scale = min(width / BASE_WIDTH, height / BASE_HEIGHT)
-        size = self.base_size * scale
-        
-        # Glow effect (cercles concentriques)
-        alpha = int(self.brightness)
-        glow_radius = size * 3
-        
-        for i in range(3):
-            glow_alpha = int(alpha * self.glow_intensity * (1 - i * 0.3))
-            if glow_alpha > 0:
-                glow_size = size + (glow_radius - size) * (i / 3)
-                glow_surf = pygame.Surface((glow_size * 4, glow_size * 4), pygame.SRCALPHA)
-                color_with_alpha = (*self.color[:3], glow_alpha // (i + 1))
-                pygame.draw.circle(glow_surf, color_with_alpha, 
-                                 (glow_size * 2, glow_size * 2), glow_size)
-                screen.blit(glow_surf, (x - glow_size * 2, y - glow_size * 2))
-        
-        # Core particule
-        core_surf = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
-        core_color = (*self.color[:3], alpha)
-        pygame.draw.circle(core_surf, core_color, (size * 2, size * 2), size)
-        screen.blit(core_surf, (x - size * 2, y - size * 2))
-
-
-class EarthAndMoon:
-    def __init__(self):
-        self.earth_x_ratio = 1300 / BASE_WIDTH
-        self.earth_y_ratio = 200 / BASE_HEIGHT
-        self.base_earth_size = 100
-        self.base_moon_size = 30
-        self.moon_distance_ratio = 120 / BASE_WIDTH
-        self.angle = 0
-        self.rotation_speed = 0.001
-        self.moon_z = 0
-        self.earth_rotation_angle = 0
-        self.earth_rotation_speed = 0.0005
-
-    def update(self):
-        self.angle += self.rotation_speed
-        self.earth_rotation_angle += self.earth_rotation_speed
-        
-    def draw(self, screen):
-        width, height = screen.get_size()
-        scale = min(width / BASE_WIDTH, height / BASE_HEIGHT)
-        
-        earth_x = int(self.earth_x_ratio * width)
-        earth_y = int(self.earth_y_ratio * height)
-        moon_distance = self.moon_distance_ratio * width
-        self.moon_z = math.sin(self.angle) * moon_distance
-        
-        earth_size = int(self.base_earth_size * scale)
-        scaled_earth = pygame.transform.scale(earth_texture, (earth_size, earth_size))
-        rotated_earth = pygame.transform.rotate(scaled_earth, math.degrees(self.earth_rotation_angle))
-        earth_rect = rotated_earth.get_rect(center=(earth_x, earth_y))
-        screen.blit(rotated_earth, earth_rect)
-        
-        moon_x = earth_x + math.cos(self.angle) * moon_distance
-        moon_y = earth_y + math.sin(self.angle) * moon_distance
-        base_moon_size = self.base_moon_size * scale
-        moon_size = max(5 * scale, base_moon_size * (1 - abs(self.moon_z) / moon_distance))
-        moon_alpha = int(255 * (1 - abs(self.moon_z) / moon_distance))
-        moon_surface = pygame.Surface((moon_size * 2, moon_size * 2), pygame.SRCALPHA)
-        scaled_moon = pygame.transform.scale(moon_texture, (int(moon_size * 2), int(moon_size * 2)))
-        moon_surface.blit(scaled_moon, (0, 0))
-        moon_surface.set_alpha(moon_alpha)
-        screen.blit(moon_surface, (moon_x - moon_size, moon_y - moon_size))
-
 # Create modern particles (remplace les étoiles)
 particles = [ModernParticle() for _ in range(200)]
-
-# Create the Earth and Moon
-earth_and_moon = EarthAndMoon()
-
-# Starting Screen
 
 starting_screen = pygame.display.set_mode((BASE_WIDTH, BASE_HEIGHT), pygame.RESIZABLE)
 starting_font_text = load_brand_font(100, bold=True)
