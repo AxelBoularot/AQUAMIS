@@ -20,7 +20,7 @@ class ProgressBar:
     def draw(self, screen):
         
         pygame.draw.rect(screen, self.gray_background, (self.x, self.y, self.clock_width + 10, self.height))
-        pygame.draw.rect(screen, (255, 255, 255), (self.x, self.y, self.clock_width + 10, self.height), 2)
+        pygame.draw.rect(screen, self.black, (self.x, self.y, self.clock_width + 10, self.height), 2)
 
         clock_height = self.speed / self.speed_max * self.height
         pygame.draw.rect(screen, self.red, (self.x + 5, self.y + self.height - clock_height, self.clock_width, clock_height))
@@ -29,9 +29,9 @@ class ProgressBar:
             if i == 0:
                 continue  
             y = self.height - (i / self.speed_max * self.height) + self.y
-            pygame.draw.line(screen, (255, 255, 255), (self.x - 5, y), (self.x + self.clock_width + 5, y), 2)
-            text = self.font.render(str(i), True, (255, 255, 255))
-            screen.blit(text, (self.x + self.clock_width + 10, y - 10))
+            pygame.draw.line(screen, self.black, (self.x - 5, y), (self.x + self.clock_width + 5, y), 4)
+            text = self.font.render(str(i), True, self.black)
+            screen.blit(text, (self.x + self.clock_width + 15, y - 10))
 
     def update(self, keys):
         if keys[pygame.K_SPACE] and self.speed < self.speed_max:
