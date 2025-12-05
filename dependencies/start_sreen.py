@@ -22,14 +22,6 @@ particles = [ModernParticle() for _ in range(200)]
 
 USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
 
-# IP du téléphone (définie par l'utilisateur dans l'interface)
-PHONE_IP = "192.168.1.100"
-
-# URL du flux vidéo du téléphone (ex: IP Webcam sur Android)
-# Format: http://IP_DU_TELEPHONE:PORT/video
-# Avec IP Webcam: http://192.168.1.100:8080/video (ou /videofeed)
-PHONE_VIDEO_URL = "http://192.168.1.100:8080/videofeed"
-
 # Fichier JSON contenant les données des capteurs du téléphone
 # Généré par phone_sensor.py
 SENSOR_DATA_FILE = "sensor_data.json"
@@ -192,10 +184,10 @@ def show_start_screen(starting_screen, logo, starting_font_button):
         
         # Dessin Boutons
         draw_modern_button(starting_screen, start_rect.x, start_rect.y, start_rect.width, start_rect.height,
-                           "START", button_font, start_rect.collidepoint(mouse_pos), is_primary=True)
-                           
+                        "START", button_font, start_rect.collidepoint(mouse_pos), is_primary=True)
+
         draw_modern_button(starting_screen, quit_rect.x, quit_rect.y, quit_rect.width, quit_rect.height,
-                           "QUIT", button_font, quit_rect.collidepoint(mouse_pos), is_primary=False)
+                        "QUIT", button_font, quit_rect.collidepoint(mouse_pos), is_primary=False)
 
         # 5. GESTION DES ÉVÉNEMENTS
         for event in pygame.event.get():
@@ -242,7 +234,7 @@ def show_start_screen(starting_screen, logo, starting_font_button):
                     # Lancement Thread Sensor
                     def start_phone_listener():
                         try:
-                            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dependencies/phone_sensor.py")
+                            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "phone_sensor.py")
                             subprocess.Popen([sys.executable, script_path, PHONE_IP])
                         except Exception as e:
                             print(f"⚠️ Erreur listener: {e}")

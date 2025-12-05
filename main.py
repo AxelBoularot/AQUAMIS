@@ -14,7 +14,8 @@ from dependencies.ModernParticle import ModernParticle
 from dependencies.Variable import WHITE, BLUE, TEXT_SECONDARY, RED, BASE_WIDTH, BASE_HEIGHT, LIGHT_BLUE, TEXT_PRIMARY, GREEN, BLACK, BCP, GRAY, SURFACE, YELLOW, WARNING, ERROR, CARD_BG
 from dependencies.Loading_Screen import show_loading_screen
 from dependencies.IP_Config import load_ip, ip_modal_handle_event, ip_modal_draw, validate_ip, save_ip, open_excel_table_console, open_tk_window
-from dependencies.start_sreen import show_start_screen,phone_video_frame, USE_PHONE_SENSORS, SENSOR_DATA_FILE, phone_video_lock
+import dependencies.start_sreen as start_screen_module
+from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
 import cv2
 import numpy as np
 import tkinter as tk
@@ -83,7 +84,7 @@ def main():
     
     def load_resources():
         nonlocal loading_complete, loading_progress, current_loading_step
-        global os, json, time, USE_PHONE_SENSORS, SENSOR_DATA_FILE
+        global os, json, time, SENSOR_DATA_FILE
         
         loading_progress = 10
         current_loading_step = "Loading configuration..."
@@ -92,7 +93,7 @@ def main():
         
         # In phone mode, we just need to make sure the listener script is running.
         # No setup is needed here as we will read from a file.
-        if USE_PHONE_SENSORS:
+        if start_screen_module.USE_PHONE_SENSORS:
             current_loading_step = "Phone sensor mode. Run sensor_listener.py"
             # Create a dummy sensor file if it doesn't exist
             if not os.path.exists(SENSOR_DATA_FILE):
@@ -103,7 +104,7 @@ def main():
         loading_progress = 20
         current_loading_step = "Creating socket client..."
         socket_client = None
-        if not USE_PHONE_SENSORS:
+        if not start_screen_module.USE_PHONE_SENSORS:
             socket_client = SocketClient(host)
         
         loading_progress = 30
@@ -120,12 +121,12 @@ def main():
 
         loading_progress = 50
         current_loading_step = "Connecting to server..."
-        if not USE_PHONE_SENSORS and socket_client:
+        if not start_screen_module.USE_PHONE_SENSORS and socket_client:
             socket_client.connect()
             if not socket_client.running:
                 print("Impossible de se connecter au serveur")
                 current_loading_step = "Connection failed!"
-        elif USE_PHONE_SENSORS:
+        elif start_screen_module.USE_PHONE_SENSORS:
             current_loading_step = "Phone sensor mode active"
             # In phone mode, we don't connect to the satellite server
             pass
@@ -133,13 +134,13 @@ def main():
         loading_progress = 70
         current_loading_step = "Starting data handlers..."
         # Démarrage des threads si connecté (satellite mode)
-        if not USE_PHONE_SENSORS and socket_client and socket_client.running:
+        if not start_screen_module.USE_PHONE_SENSORS and socket_client and socket_client.running:
             video_receiver = VideoReceiver(socket_client)
             data_handler = DataHandler(socket_client)
             data_handler.message_to_send = envoie
             data_handler.start()
             video_receiver.start()
-        elif USE_PHONE_SENSORS:
+        elif start_screen_module.USE_PHONE_SENSORS:
             current_loading_step = "Receiving phone data..."
             # No separate threads needed for phone as it's self-contained
             pass
@@ -397,7 +398,7 @@ def main():
                 if result_emergency == "emergency_stop":
                     # Stopper les systèmes mais rester dans l'interface
                     print("🛑 Stopping all systems...")
-                    if not USE_PHONE_SENSORS and socket_client is not None and hasattr(socket_client, 'running') and socket_client.running:
+                    if not start_screen_module.USE_PHONE_SENSORS and socket_client is not None and hasattr(socket_client, 'running') and socket_client.running:
                         socket_client.close()
                     if video_receiver is not None:
                         video_receiver.running = False
@@ -483,16 +484,15 @@ def main():
         if 'LAST_SAVED_IP' in globals():
             host = globals().pop('LAST_SAVED_IP')
             print(f"Adresse ip sélectionné : {host}")
-            if USE_PHONE_SENSORS:
-                global PHONE_IP, PHONE_VIDEO_URL
-                PHONE_IP = host
-                PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
-                print(f"📱 Phone IP mis à jour : {PHONE_IP}")
-                print(f"📹 Phone Video URL mis à jour : {PHONE_VIDEO_URL}")
-                print("⚠️ Veuillez redémarrer l'application pour appliquer les changements")
+            if start_screen_module.USE_PHONE_SENSORS:
+                start_screen_module.PHONE_IP = host
+                start_screen_module.PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
+                print(f"Phone IP mis à jour : {start_screen_module.PHONE_IP}")
+                print(f"Phone Video URL mis à jour : {start_screen_module.PHONE_VIDEO_URL}")
+                print("Veuillez redémarrer l'application pour appliquer les changements")
         
          # Lire les données des capteurs AVANT de mettre à jour le cube
-        if USE_PHONE_SENSORS:
+        if start_screen_module.USE_PHONE_SENSORS:
             try:
                 with open(SENSOR_DATA_FILE, "r") as f:
                     sensor_data = json.load(f)
@@ -636,9 +636,9 @@ def main():
         frame = None
         
         # Si mode téléphone, utiliser le flux vidéo du téléphone
-        if USE_PHONE_SENSORS and phone_video_frame is not None:
-            with phone_video_lock:
-                frame = phone_video_frame.copy()
+        if start_screen_module.USE_PHONE_SENSORS and start_screen_module.phone_video_frame is not None:
+            with start_screen_module.phone_video_lock:
+                frame = start_screen_module.phone_video_frame.copy()
         # Sinon, utiliser le flux vidéo satellite
         elif video_receiver and video_receiver.frame is not None:
             with video_receiver.frame_lock:
@@ -699,10 +699,10 @@ def main():
         
         # Indicateur de mode (en haut à droite)
         mode_font = pygame.font.SysFont('Century Schoolbook', 14, bold=True)
-        if USE_PHONE_SENSORS:
+        if start_screen_module.USE_PHONE_SENSORS:
             mode_text = f"🧪 TEST MODE"
             mode_color = (70, 179, 230)
-            ip_text = f"📱 {PHONE_IP}"
+            ip_text = f"📱 {start_screen_module.PHONE_IP}"
             # Vérifier si le fichier sensor_data.json est récent (connexion active)
             try:
                 import os
@@ -727,7 +727,7 @@ def main():
         mode_surface = mode_font.render(mode_text, True, mode_color)
         virtual_screen.blit(mode_surface, (virtual_screen.get_width() - mode_surface.get_width() - 20, 10))
         
-        if USE_PHONE_SENSORS:
+        if start_screen_module.USE_PHONE_SENSORS:
             ip_surface = mode_font.render(ip_text, True, (180, 200, 220))
             virtual_screen.blit(ip_surface, (virtual_screen.get_width() - ip_surface.get_width() - 20, 30))
             
@@ -834,7 +834,7 @@ def main():
         clock.tick(60)
 
     pygame.quit()
-    if not USE_PHONE_SENSORS and socket_client and socket_client.running:
+    if not start_screen_module.USE_PHONE_SENSORS and socket_client and socket_client.running:
         socket_client.close()
     if video_receiver:
         video_receiver.running = False
@@ -843,15 +843,6 @@ def main():
         data_handler.running = False
         data_handler.join()
     # No need to stop phone_server as it's a separate process
-    pygame.quit()
-    if not USE_PHONE_SENSORS and socket_client and socket_client.running:
-        socket_client.close()
-    if video_receiver:
-        video_receiver.running = False
-        video_receiver.join()
-    if data_handler:
-        data_handler.running = False
-        data_handler.join()
 
 show_start_screen(starting_font_button=starting_font_button, logo=logo, starting_screen=starting_screen)  
 
