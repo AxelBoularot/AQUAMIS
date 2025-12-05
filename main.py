@@ -34,8 +34,7 @@ except Exception as e:
     print(f"Error checking CUDA availability: {e}")
 
 # Detect device and load the YOLO11 model onto the appropriate device
-# Force CPU - RTX 5070 sm_120 architecture not supported yet
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 # Load the YOLO11 model
 model = YOLO("object_detection_lib/yolo11n.pt").to(device)
