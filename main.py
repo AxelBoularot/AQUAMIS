@@ -60,7 +60,6 @@ pygame.display.set_icon(logo)
 # Classes used to create buttons, decorations and communication boxes
 
 
-
 starting_screen = pygame.display.set_mode((BASE_WIDTH, BASE_HEIGHT), pygame.RESIZABLE)
 starting_font_text = load_brand_font(100, bold=True)
 starting_font_button = load_brand_font(20, bold=True)
