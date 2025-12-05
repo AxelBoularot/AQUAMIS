@@ -2,9 +2,11 @@ import pygame
 import sys
 import math
 
+from dependencies.IP_Config import load_ip, save_ip
+
 class Special_button(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, text, font, text_color, button_color, 
-                 button_color_pressed, screen, action=None, message="", ):
+                button_color_pressed, screen, action=None, message="", ):
         super().__init__()
         self.rect = pygame.Rect(x, y, width, height)
         self.image_normal = pygame.Surface((width, height))
@@ -34,7 +36,10 @@ class Special_button(pygame.sprite.Sprite):
         self.error_time = 0
         # Mode test (téléphone)
         self.test_mode = False
-        self.phone_ip = "192.168.1.157"  # IP par défaut
+        try:
+            self.phone_ip = load_ip().get("ip", "")
+        except Exception:
+            self.phone_ip = ""
         self.ip_input_active = False  # Si on est en train de saisir l'IP
         self._draw_text()
 
@@ -103,6 +108,8 @@ class Special_button(pygame.sprite.Sprite):
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
                     if self.password_text == self.correct_password:
+                        if self.test_mode:
+                            save_ip(self.phone_ip)
                         mode_text = "TEST MODE (Phone)" if self.test_mode else "NORMAL MODE (Satellite)"
                         print(f"\nInitializing System - AMIS has successfully started in {mode_text}!\n\n" 
                               + "Timer has started!\n\n")
@@ -458,7 +465,7 @@ class Special_button(pygame.sprite.Sprite):
         # Toggle Mode Test
         toggle_y = input_y + input_height + 50
         toggle_label_font = pygame.font.SysFont('Arial', 16, bold=True)
-        toggle_label = toggle_label_font.render("🧪 Test Mode (Phone Sensors)", True, (180, 200, 220))
+        toggle_label = toggle_label_font.render(" Test Mode (Phone Sensors)", True, (180, 200, 220))
         toggle_label.set_alpha(self.fade_alpha)
         toggle_label_rect = toggle_label.get_rect(left=input_x + 50, centery=toggle_y)
         dialog_surface.blit(toggle_label, toggle_label_rect)
@@ -496,12 +503,12 @@ class Special_button(pygame.sprite.Sprite):
             ip_input_color = (60, 80, 100) if not self.ip_input_active else (70, 90, 120)
             ip_input_rect = pygame.Rect(input_x, ip_y, input_width, ip_input_height)
             pygame.draw.rect(dialog_surface, ip_input_color + (int(self.fade_alpha),), 
-                           (input_x, ip_y, input_width, ip_input_height), border_radius=8)
+                        (input_x, ip_y, input_width, ip_input_height), border_radius=8)
             
             # Bordure si actif
             if self.ip_input_active:
                 pygame.draw.rect(dialog_surface, (70, 179, 230, self.fade_alpha), 
-                               (input_x, ip_y, input_width, ip_input_height), width=2, border_radius=8)
+                            (input_x, ip_y, input_width, ip_input_height), width=2, border_radius=8)
             
             # Store IP input rect for click detection
             self.ip_input_rect = pygame.Rect(box_x + input_x, box_y + ip_y, input_width, ip_input_height)
