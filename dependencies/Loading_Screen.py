@@ -84,7 +84,7 @@ def show_loading_screen(continue_loading, get_current_step,starting_screen):
 
         starting_screen.blit(base, (center_x - loader_center, center_y - loader_center))
         radar_angle = (radar_angle + 4) % 360
-        rot_glow = pygame.transform.rotate(glow, radar_angle)
+        rot_glow = pygame.transform.rotate(glow, -radar_angle)
         rg_w, rg_h = rot_glow.get_size()
         starting_screen.blit(rot_glow, (center_x - rg_w // 2, center_y - rg_h // 2))
 

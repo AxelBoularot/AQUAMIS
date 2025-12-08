@@ -19,7 +19,7 @@ from collections import deque
 import math
 
 # Configuration
-PHONE_IP = "192.168.1.100"
+PHONE_IP = "10.46.71.131"
 VIDEO_URL = f"http://{PHONE_IP}:8080/videofeed"
 MODEL_DEVICE = "cpu"  # Force CPU (RTX 5070 sm_120 non supporté)
 MAX_POINTS = 30000  # Limite de points pour la mémoire (réduit pour performance)
