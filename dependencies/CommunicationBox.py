@@ -1,5 +1,7 @@
 import pygame
 import random
+
+from dependencies.Variable import RED
 GREEN = (30, 150, 95)
 class CommunicationBox(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, font, text_color, ok_color, not_ok_color, text):
@@ -17,7 +19,7 @@ class CommunicationBox(pygame.sprite.Sprite):
         self._draw_text()
 
     def _draw_text(self):
-        fill_color = GREEN if self.communication_ok else RED
+        fill_color = GREEN if self.communication_ok else RED        
         self.image.fill(fill_color)
         text_surface = self.font.render(self.text, True, self.text_color)
         text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
