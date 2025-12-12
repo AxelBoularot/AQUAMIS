@@ -17,7 +17,7 @@ class CommunicationBox(pygame.sprite.Sprite):
         self._draw_text()
 
     def _draw_text(self):
-        fill_color = GREEN if self.communication_ok else RED
+        fill_color = GREEN if self.communication_ok else (200, 50, 50)
         self.image.fill(fill_color)
         text_surface = self.font.render(self.text, True, self.text_color)
         text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
