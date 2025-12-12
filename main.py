@@ -161,7 +161,7 @@ class App():
         )
 
         # 3D Cube
-        self.cube = Cube.Cube(position=(750, 250), size=1.5, fov=256, viewer_distance=4)
+        self.cube = Cube.Cube(position=(1000, 100), size=0.5, fov=256, viewer_distance=4)
         self.cube_sprite_group = pygame.sprite.Group(self.cube)
 
         # Logos
