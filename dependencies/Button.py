@@ -1,78 +1,84 @@
 import pygame
 from dependencies.Variable import WHITE
-BCP = (0, 74, 124)
+
+# Default colors
+BCP = (0, 74, 124) # Button Color Pressed (Default Blue)
+
 class Button(pygame.sprite.Sprite):
+    """
+    Modern Button inspired by React Base-UI.
+    Features: Rounded corners, flat design, clean typography, hover effects.
+    """
     def __init__(self, x, y, width, height, text, font, text_color, button_color, action=None, button_color_pressed=BCP, message=""):
         super().__init__()
-        self.image_normal = pygame.Surface((width, height))
-        self.image_normal.fill(button_color)
-        self.image_hovered = pygame.Surface((width, height))
-        self.image_hovered.fill(button_color_pressed)
-        self.image = self.image_normal.copy()
-        self.rect = self.image.get_rect(topleft=(x, y))
+        self.rect = pygame.Rect(x, y, width, height)
         self.text = text
         self.font = font
         self.text_color = text_color
+        self.base_color = button_color
+        self.hover_color = button_color_pressed
         self.action = action
         self.message = message
-        self._draw_text()
+        
+        # Modern Styling Constants
+        self.border_radius = 10
+        self.border_width = 1
+        self.border_color = (255, 255, 255, 30) # Subtle white border for definition
+        
+        # Pre-render states
+        self.image_normal = self._create_surface(self.base_color)
+        self.image_hovered = self._create_surface(self.hover_color, is_hover=True)
+        
+        self.image = self.image_normal
 
-    def _draw_text(self):
-        text_surface = self.font.render(self.text, True, self.text_color)
-        text_rect = text_surface.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
-        self.image.blit(text_surface, text_rect)
+    def _create_surface(self, color, is_hover=False):
+        # Create transparent surface
+        surface = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
+        
+        # Draw background with rounded corners
+        pygame.draw.rect(surface, color, surface.get_rect(), border_radius=self.border_radius)
+        
+        # Draw subtle border
+        pygame.draw.rect(surface, self.border_color, surface.get_rect(), width=self.border_width, border_radius=self.border_radius)
+        
+        # Draw Text
+        text_surf = self.font.render(self.text, True, self.text_color)
+        text_rect = text_surf.get_rect(center=(self.rect.width // 2, self.rect.height // 2))
+        surface.blit(text_surf, text_rect)
+        
+        return surface
 
     def update(self, mouse_pos):
-
-        self.image = self.image_hovered.copy() if self.rect.collidepoint(mouse_pos) else self.image_normal.copy()
-        self._draw_text()
+        # Simple hover check
+        if self.rect.collidepoint(mouse_pos):
+            self.image = self.image_hovered
+        else:
+            self.image = self.image_normal
 
     def click(self, mouse_pos):
         if self.rect.collidepoint(mouse_pos):
-            print(self.message)
+            if self.message:
+                print(self.message)
             if self.action:
                 self.action()
 
 def draw_modern_button(surface, x, y, w, h, text, font, is_hovered, is_primary=True):
-    """Bouton moderne pour thème sombre avec léger dégradé et halo au survol"""
+    """Updated modern button drawing function for compatibility."""
     rect = pygame.Rect(int(x), int(y), int(w), int(h))
-    corner = 15
+    
+    # Colors
+    base_color = (0, 120, 215) if is_primary else (60, 60, 60)
+    hover_color = (0, 140, 255) if is_primary else (80, 80, 80)
+    color = hover_color if is_hovered else base_color
+    
+    # Draw rounded rect
+    pygame.draw.rect(surface, color, rect, border_radius=10)
+    
+    # Border
+    pygame.draw.rect(surface, (255, 255, 255, 40), rect, width=1, border_radius=10)
 
-    # Couleurs de base
-    # Couleurs selon le type - inspiré du CSS rgb(0,140,255)
-    if is_primary:
-        base_color = (0, 140, 255)  # Bleu lumineux pour START
-        glow_color = (0, 140, 255)
-    else:
-        base_color = (80, 90, 110)  # Gris pour QUIT
-        glow_color = (100, 110, 130)
-
-    # Effet glow multiple (box-shadow CSS: 0 0 25px, puis au hover: 5px, 25px, 50px, 100px)
-    if is_hovered:
-        # Glow intensifié au survol - réduit pour éviter trop de débordement
-        glow_layers = [
-            (40, 35),   # Couche la plus large réduite
-            (25, 30),   # Couche moyenne
-            (12, 25),   # Couche proche
-            (5, 20)     # Couche la plus proche
-        ]
-        for blur_size, alpha in glow_layers:
-            glow_surface = pygame.Surface((rect.width + blur_size * 2, rect.height + blur_size * 2), pygame.SRCALPHA)
-            glow_rect = glow_surface.get_rect()
-            pygame.draw.rect(glow_surface, (*glow_color, alpha), glow_rect, border_radius=corner + blur_size // 2)
-            surface.blit(glow_surface, (rect.x - blur_size, rect.y - blur_size))
-    else:
-        # Glow de base (0 0 25px dans le CSS)
-        glow_surface = pygame.Surface((rect.width + 30, rect.height + 30), pygame.SRCALPHA)
-        glow_rect = glow_surface.get_rect()
-        pygame.draw.rect(glow_surface, (*glow_color, 40), glow_rect, border_radius=corner + 8)
-        surface.blit(glow_surface, (rect.x - 15, rect.y - 15))
-
-    # Bouton principal (background: rgb(0,140,255))
-    pygame.draw.rect(surface, base_color, rect, border_radius=corner)
-
-    # Texte en majuscules avec espacement (letter-spacing: 4px, uppercase)
-    label = font.render(text.upper(), True, WHITE)
+    # Text
+    label = font.render(text, True, WHITE)
     label_rect = label.get_rect(center=rect.center)
     surface.blit(label, label_rect)
 
