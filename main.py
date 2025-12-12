@@ -133,21 +133,13 @@ class App():
 
         # Buttons
         self.button_color = (75, 75, 75)
-        self.button_forward = Button(697, 500, 107, 85, 'FORWARD', self.font15, WHITE, self.button_color, self.forward, BCP, "AMIS is going FORWARD!")
-        self.button_left = Button(577, 587, 118, 67, 'LEFT', self.font15, WHITE, self.button_color, self.left, BCP, "AMIS is going LEFT!")
-        self.button_right = Button(806, 587, 118, 67, 'RIGHT', self.font15, WHITE, self.button_color, self.right, BCP, "AMIS is going RIGHT!")
-        self.button_backward = Button(697, 655, 107, 84, 'BACKWARD', self.font15, WHITE, self.button_color, self.backward, BCP, "AMIS is going BACKWARD!")
-        self.button_up = Button(500, 520, 180, 50, 'UPWARD', self.font15, WHITE, self.button_color, self.up, BCP, "AMIS is going UP!")
-        self.button_down = Button(820, 670, 180, 50, 'DOWNWARD', self.font15, WHITE, self.button_color, self.down, BCP, "AMIS is going DOWN!")
-
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
         self.button_emergency_stop = Special_button(20, 510, 350, 110, 'EMERGENCY STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.button_action, "EMERGENCY STOP HAS BEEN TRIGGERED")
         self.switch_com = Button(20, 400, 350, 80, 'SWITCH COM', self.font, WHITE, self.button_color, self.button_action, BCP, "Comms have been switched!")
         self.button_save_data = Button(1130, 400, 350, 80, 'SAVE DATA', self.font, WHITE, self.button_color, self.button_action, BCP, "Currently saving Data...")
 
-        self.all_buttons = [self.button_forward, self.button_left, self.button_right, self.button_backward,
-                            self.button_up, self.button_down, self.button_stop, self.button_emergency_stop,
+        self.all_buttons = [self.button_stop, self.button_emergency_stop,
                             self.switch_com, self.button_save_data]
 
         # Menu Bar
@@ -162,8 +154,7 @@ class App():
         # Sprite Group
         self.all_sprites = pygame.sprite.Group()
         self.all_sprites.add(
-            self.button_forward, self.button_left, self.button_right, self.button_backward,
-            self.switch_com, self.AMIS_box, self.button_up, self.button_down,
+            self.switch_com, self.AMIS_box,
             self.button_save_data, self.button_emergency_stop,
             self.comm_box, self.cam_box, self.mpu_box, self.servo_box, self.motor_box,
             self.pressure_sensor_box, self.lineh1, self.lineh2, self.lineh3, self.lineh4, self.lineh5,
@@ -478,7 +469,6 @@ class App():
             
             # Logo
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
-            self.virtual_screen.blit(self.logo_amis_small, self.logo_amis_small_rect)
             self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
 
             # 4. Video & AI Processing (Optimized)
