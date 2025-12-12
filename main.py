@@ -128,8 +128,6 @@ class App():
         self.linev3 = DecorativeBox(5, 375, BH, 750, self.font, GRAY, GRAY, "")
         self.linev4 = DecorativeBox(385, 375, BH, 750, self.font, GRAY, GRAY, "")
 
-        """self.AMIS_box = DecorativeBox(750, 620, 107, 67, self.font15, YELLOW, GRAY, '')"""
-
         # Buttons
         self.button_color = (75, 75, 75)
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
@@ -460,9 +458,6 @@ class App():
             self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
             self.cube_sprite_group.draw(self.virtual_screen)
 
-            # Decorative Borders
-            pygame.draw.rect(self.virtual_screen, BLUE, (390, 10, 720, 480), 2) # Main Vid Border
-            
             # Logo
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
             self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
