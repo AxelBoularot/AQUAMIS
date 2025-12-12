@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
+from datetime import datetime
 
 # Dependencies
 import dependencies.Cube as Cube
@@ -39,6 +40,57 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 # Load model once at startup
 model = YOLO("object_detection_lib/yolo11n.pt").to(device)
+
+# ============================================================
+# Log System Class
+# ============================================================
+class LogSystem:
+    def __init__(self, font, max_logs=100):
+        self.font = font
+        self.max_logs = max_logs
+        self.logs = []  # List of (timestamp, message, color)
+        self.scroll_offset = 0
+        self.line_height = 20
+        self.visible_lines = 7  # Adjust based on zone height
+
+    def add_log(self, message, level="info"):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        if level == "info":
+            color = BLUE
+        elif level == "warning":
+            color = YELLOW
+        elif level == "error":
+            color = RED
+        else:
+            color = WHITE
+        self.logs.append((timestamp, message, color))
+        if len(self.logs) > self.max_logs:
+            self.logs.pop(0)
+
+    def handle_scroll(self, event):
+        if event.type == pygame.MOUSEWHEEL:
+            self.scroll_offset += event.y
+            self.scroll_offset = max(0, min(self.scroll_offset, max(0, len(self.logs) - self.visible_lines)))
+
+    def draw(self, surface, x, y, width, height):
+        # Draw background
+        pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height))
+        pygame.draw.rect(surface, WHITE, (x, y, width, height), 1)
+        
+        # Draw title
+        title_surf = self.font.render("System Logs", True, YELLOW)
+        surface.blit(title_surf, (x + 5, y + 5))
+        
+        # Draw logs
+        start_idx = self.scroll_offset
+        for i in range(self.visible_lines):
+            idx = start_idx + i
+            if idx >= len(self.logs):
+                break
+            timestamp, message, color = self.logs[idx]
+            text = f"[{timestamp}] {message}"
+            text_surf = self.font.render(text, True, color)
+            surface.blit(text_surf, (x + 5, y + 25 + i * self.line_height))
 
 # ============================================================
 # Initialisation de Pygame
@@ -78,6 +130,9 @@ class App():
         self.vitesse_gauche = 0
         self.data_text = {}
         self.value = []
+        self.font = load_brand_font(20, bold=False)
+        self.font15 = load_brand_font(15, bold=False)
+        self.font18 = load_brand_font(18, bold=False)
 
         # Start loading thread
         load_thread = threading.Thread(target=self.load_resources)
@@ -87,6 +142,16 @@ class App():
         # Show Loading Screen (Blocking until ready)
         show_loading_screen(self.is_loading, self.get_current_step, starting_screen)
         
+        # Add logs after loading
+        self.log_system = LogSystem(self.font15)
+        self.log_system.add_log("System initialization complete", "info")
+        if not start_screen_module.USE_PHONE_SENSORS and self.socket_client and self.socket_client.running:
+            self.log_system.add_log("Connected to server successfully", "info")
+        elif start_screen_module.USE_PHONE_SENSORS:
+            self.log_system.add_log("Phone sensor mode activated", "info")
+        else:
+            self.log_system.add_log("Connection failed - check server", "error")
+        
         # --- Interface Setup ---
         self.screen = starting_screen
         self.fade_in_alpha = 255
@@ -94,9 +159,6 @@ class App():
         self.clock = pygame.time.Clock()
         
         # Fonts
-        self.font = load_brand_font(20, bold=False)
-        self.font15 = load_brand_font(15, bold=False)
-        self.font18 = load_brand_font(18, bold=False)
         self.start_time = time.time()
 
         # Background Image Management
@@ -181,6 +243,16 @@ class App():
             (255, 0, 0), (0, 0, 255), "", "", target_pressure=6, target_depth=25
         )
         self.graph_angles = Graphs_Angles(self.virtual_screen, 240, 170, 180)
+
+        # Log System
+        self.log_system = LogSystem(self.font15)
+        
+        # Add test logs
+        self.log_system.add_log("System initialized", "info")
+        self.log_system.add_log("Loading configuration...", "info")
+        self.log_system.add_log("Connection established", "info")
+        self.log_system.add_log("Warning: Low battery", "warning")
+        self.log_system.add_log("Error: Sensor failure", "error")
 
     # --- Loading Methods ---
     def is_loading(self):
@@ -277,6 +349,7 @@ class App():
 
     # --- Main Loop ---
     def main(self):
+        self.log_system.add_log("Main loop started", "info")
         while self.running:
             # 1. Input Handling
             self.keys = pygame.key.get_pressed()
@@ -345,6 +418,9 @@ class App():
                     for button in self.all_buttons:
                         if button.rect.collidepoint(mouse_pos):
                             button.click(mouse_pos)
+
+                # Handle mouse wheel for log scrolling
+                self.log_system.handle_scroll(event)
 
                 # Text Entry Handling
                 if event.type == pygame.KEYDOWN:
@@ -416,6 +492,9 @@ class App():
             # Update Graphs
             self.graph_pressure_depth.update_graph_main()
             self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
+
+            # Draw Logs
+            self.log_system.draw(self.virtual_screen, 1120, 200, 370, 150)
 
             # Timer
             elapsed = time.time() - self.start_time
