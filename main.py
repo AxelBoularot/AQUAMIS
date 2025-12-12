@@ -175,14 +175,6 @@ class App():
         self.logo_amis_big_rect = self.logo_amis_big.get_rect(center=(50, 50))
         self.logo_amis_small_rect = self.logo_amis_small.get_rect(center=(749, 620))
 
-        """# Inputs & Bars
-        self.speed_clock_lm = ProgressBar(435, 510, 30, 220)
-        self.speed_clock_rm = ProgressBar(1040, 510, 30, 220)
-        self.input_active_lm = False
-        self.input_text_lm = ""
-        self.input_active_rm = False
-        self.input_text_rm = """""
-
         # Graphs
         self.graph_pressure_depth = Graphs_Main(
             self.virtual_screen, 240, 170, 255, 50,
@@ -288,8 +280,6 @@ class App():
         while self.running:
             # 1. Input Handling
             self.keys = pygame.key.get_pressed()
-            """self.speed_clock_lm.update(self.keys)
-            self.speed_clock_rm.update(self.keys)"""
 
             if self.fade_in_alpha > 0:
                 self.fade_in_alpha = max(0, self.fade_in_alpha - 60)
@@ -362,7 +352,6 @@ class App():
                         if event.key == pygame.K_RETURN:
                             if self.input_text_lm.isdigit():
                                 self.vitesse_gauche = int(self.input_text_lm)
-                                self.speed_clock_lm.set_speed(self.vitesse_gauche)
                             self.input_active_lm = False
                         elif event.key == pygame.K_BACKSPACE:
                             self.input_text_lm = self.input_text_lm[:-1]
@@ -373,7 +362,6 @@ class App():
                         if event.key == pygame.K_RETURN:
                             if self.input_text_rm.isdigit():
                                 self.vitesse_droit = int(self.input_text_rm)
-                                self.speed_clock_rm.set_speed(self.vitesse_droit)
                             self.input_active_rm = False
                         elif event.key == pygame.K_BACKSPACE:
                             self.input_text_rm = self.input_text_rm[:-1]
@@ -428,18 +416,6 @@ class App():
             # Update Graphs
             self.graph_pressure_depth.update_graph_main()
             self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
-
-            # Speed Controls Drawing
-            """pygame.draw.rect(self.virtual_screen, GRAY, (390, 490, 200, 300))
-            pygame.draw.rect(self.virtual_screen, GRAY, (920, 490, 200, 300))
-            self.speed_clock_lm.draw(self.virtual_screen)
-            self.speed_clock_rm.draw(self.virtual_screen)"""
-            
-            # Speed Text
-            """txt_lm = self.input_text_lm if self.input_active_lm else str(self.speed_clock_lm.speed)
-            txt_rm = self.input_text_rm if self.input_active_rm else str(self.speed_clock_rm.speed)
-            self.virtual_screen.blit(self.font.render(txt_lm, True, WHITE), (535 - 10, 700))
-            self.virtual_screen.blit(self.font.render(txt_rm, True, WHITE), (965 - 10, 520))"""
 
             # Timer
             elapsed = time.time() - self.start_time
