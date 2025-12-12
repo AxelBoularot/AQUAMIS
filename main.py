@@ -435,16 +435,8 @@ class App():
             self.virtual_screen.blit(self.button_stop.image, self.button_stop.rect)
             self.button_stop.draw(self.virtual_screen, self.font)
 
-            # Cube Animation
-            self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
-            self.cube_sprite_group.draw(self.virtual_screen)
-
-            # Decorative Borders
-            pygame.draw.rect(self.virtual_screen, BLUE, (390, 10, 720, 480), 2) # Main Vid Border
-            
             # Logo
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
-            self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
 
             # 4. Video & AI Processing (Optimized)
             frame = None
@@ -479,6 +471,11 @@ class App():
                     
                 except Exception as e:
                     print(f"Video Error: {e}")
+            
+            # Cube Animation
+            self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
+            self.cube_sprite_group.draw(self.virtual_screen)
+      
 
             # 5. Overlay Status
             mode_text = "🧪 TEST MODE" if start_screen_module.USE_PHONE_SENSORS else "🛰️ SATELLITE MODE"
