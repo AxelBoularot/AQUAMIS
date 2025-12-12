@@ -62,8 +62,8 @@ class Cube(pygame.sprite.Sprite):
         transformed_vertices = self.get_transformed_vertices(self.angle_x, self.angle_y, self.angle_z)
         projected_points = [project_point(v, self.rect.width, self.rect.height, self.fov, self.viewer_distance) for v in transformed_vertices]
         for edge in self.edges:
+            pygame.draw.line(self.image, (0, 0, 0), projected_points[edge[0]], projected_points[edge[1]], 4)
             pygame.draw.line(self.image, (169, 169, 169), projected_points[edge[0]], projected_points[edge[1]], 2)
-    
         center_transformed = rotate_point((0, 0, 0), self.angle_x, self.angle_y, self.angle_z)
         x_axis_transformed = rotate_point((2 * self.size, 0, 0), self.angle_x, self.angle_y, self.angle_z)
         y_axis_transformed = rotate_point((0, 2 * self.size, 0), self.angle_x, self.angle_y, self.angle_z)
@@ -79,9 +79,9 @@ class Cube(pygame.sprite.Sprite):
         pygame.draw.line(self.image, (0, 0, 255), center, z_axis, 2)  # Axe Z en bleu
 
         font = pygame.font.Font(None, 24)
-        text_x = font.render(f"{self.angle_x:.2f}", True, (255, 0, 0))  # Rouge
+        """text_x = font.render(f"{self.angle_x:.2f}", True, (255, 0, 0))  # Rouge
         text_y = font.render(f"{self.angle_y:.2f}", True, (0, 255, 0))  # Vert
         text_z = font.render(f"{self.angle_z:.2f}", True, (0, 0, 255))  # Bleu
         self.image.blit(text_x, (105, 367))
         self.image.blit(text_y, (210, 367))
-        self.image.blit(text_z, (310, 367))
+        self.image.blit(text_z, (310, 367))"""
