@@ -20,5 +20,5 @@
 à faire    -   Anticiper les obstacles pour que le cap soit gardé en évitant la collision (l'afficher à l'écran 
                 pour que l'utilisateur réagisse? envoyer un signal? qu'il bouge tout seul?)
 à faire    -   Possibilité d'enregistrer l'interface lors du fonctionnement sous forme de vidéo
-
+à faire - changer yolo vers un yolo qui peut changer les objets à reconnaitre.
 
