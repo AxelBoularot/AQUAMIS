@@ -223,7 +223,7 @@ class App():
         )
 
         # 3D Cube
-        self.cube = Cube.Cube(position=(1000, 100), size=0.5, fov=256, viewer_distance=4)
+        self.cube = Cube.Cube(position=(750, 250), size=1.5, fov=256, viewer_distance=4)
         self.cube_sprite_group = pygame.sprite.Group(self.cube)
 
         # Logos
@@ -243,16 +243,6 @@ class App():
             (255, 0, 0), (0, 0, 255), "", "", target_pressure=6, target_depth=25
         )
         self.graph_angles = Graphs_Angles(self.virtual_screen, 240, 170, 180)
-
-        # Log System
-        self.log_system = LogSystem(self.font15)
-        
-        # Add test logs
-        self.log_system.add_log("System initialized", "info")
-        self.log_system.add_log("Loading configuration...", "info")
-        self.log_system.add_log("Connection established", "info")
-        self.log_system.add_log("Warning: Low battery", "warning")
-        self.log_system.add_log("Error: Sensor failure", "error")
 
     # --- Loading Methods ---
     def is_loading(self):
@@ -367,12 +357,18 @@ class App():
                 if event.type == pygame.VIDEORESIZE:
                     self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
 
+                # KEYDOWN handling (existing) + update key-buttons
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F11:
                         pygame.display.toggle_fullscreen()
                     self.button_stop.handle_event_stop(event)
                     result_emergency = self.button_emergency_stop.handle_event_emergency(event)
                     
+                    # --- mark our virtual keys as pressed when keyboard pressed ---
+                    for lab, k in self.key_map.items():
+                        if event.key == k:
+                            self.key_buttons[lab]["pressed"] = True
+
                     if result_emergency == "emergency_stop":
                         print("🛑 EMERGENCY STOP - Stopping systems...")
                         if self.socket_client and hasattr(self.socket_client, 'running') and self.socket_client.running:
@@ -384,18 +380,17 @@ class App():
                         print("✅ Systems stopped.")
                     self.comm_box.update_status()
 
+                # KEYUP: release visual keys
+                if event.type == pygame.KEYUP:
+                    for lab, k in self.key_map.items():
+                        if event.key == k:
+                            self.key_buttons[lab]["pressed"] = False
+
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.button_emergency_stop.show_emergency_input: continue
 
                     mouse_pos = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
                     virtual_event_pos = convert_mouse_pos(event.pos, self.screen)
-
-                    # Text Inputs
-                    self.input_active_lm = (485 <= virtual_event_pos[0] <= 585 and 690 <= virtual_event_pos[1] <= 730)
-                    if self.input_active_lm: self.input_text_lm = ""
-                    
-                    self.input_active_rm = (915 <= virtual_event_pos[0] <= 1015 and 510 <= virtual_event_pos[1] <= 610)
-                    if self.input_active_rm: self.input_text_rm = ""
 
                     # Buttons checks
                     if self.button_emergency_stop.rect.collidepoint(mouse_pos):
@@ -418,9 +413,6 @@ class App():
                     for button in self.all_buttons:
                         if button.rect.collidepoint(mouse_pos):
                             button.click(mouse_pos)
-
-                # Handle mouse wheel for log scrolling
-                self.log_system.handle_scroll(event)
 
                 # Text Entry Handling
                 if event.type == pygame.KEYDOWN:
@@ -514,8 +506,43 @@ class App():
             self.virtual_screen.blit(self.button_stop.image, self.button_stop.rect)
             self.button_stop.draw(self.virtual_screen, self.font)
 
+            # Cube Animation
+            self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
+            self.cube_sprite_group.draw(self.virtual_screen)
+
+            # Decorative Borders
+            pygame.draw.rect(self.virtual_screen, BLUE, (390, 10, 720, 480), 2) # Main Vid Border
+            
             # Logo
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
+            self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
+
+            # --- Draw keyboard buttons (AZE over QSD) - outline only ---
+            for info in self.key_buttons.values():
+                r = info["rect"]
+                pressed = info["pressed"]
+
+                # subtle shadow (optional, keep very light)
+                shadow_rect = r.move(3, 3)
+                pygame.draw.rect(self.virtual_screen, (8, 8, 8), shadow_rect, border_radius=10)
+
+                # border only: white when pressed, gray when not
+                if pressed:
+                    border_color = (255, 255, 255)
+                    border_width = 4
+                    label_color = (255, 255, 255)
+                else:
+                    border_color = (110, 110, 110)
+                    border_width = 2
+                    label_color = (220, 220, 220)
+
+                # no fill, only outline
+                pygame.draw.rect(self.virtual_screen, border_color, r, border_width, border_radius=10)
+
+                # label centered
+                lbl_surf = self.font15.render(info["label"], True, label_color)
+                lbl_rect = lbl_surf.get_rect(center=r.center)
+                self.virtual_screen.blit(lbl_surf, lbl_rect)
 
             # 4. Video & AI Processing (Optimized)
             frame = None
@@ -550,11 +577,6 @@ class App():
                     
                 except Exception as e:
                     print(f"Video Error: {e}")
-            
-            # Cube Animation
-            self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
-            self.cube_sprite_group.draw(self.virtual_screen)
-      
 
             # 5. Overlay Status
             mode_text = "🧪 TEST MODE" if start_screen_module.USE_PHONE_SENSORS else "🛰️ SATELLITE MODE"
