@@ -475,7 +475,7 @@ class App():
             # 6. Final Window Composition
             current_size = self.screen.get_size()
             
-            # Draw Background (Cached)
+            # 1. Background
             if self.bg_image:
                 if self.bg_cache['size'] != current_size:
                     # Update cache if window size changed
@@ -490,18 +490,22 @@ class App():
             else:
                 self.screen.fill(BLACK)
 
-            # Draw Menu
-            self.menu_bar.update(pygame.mouse.get_pos())
-            self.menu_bar.draw(self.screen)
+            # 2. Draw Menu Bar (fixed part) FIRST - on screen, same level as background
+            mouse_pos_virtual = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
+            self.menu_bar.update(mouse_pos_virtual)
+            self.menu_bar.draw_bar(self.screen)
             menu_height = self.menu_bar.menu_height
 
-            # Scale Virtual Screen to fit remaining space
+            # 3. Scale and draw Virtual Screen (main interface)
             available_h = current_size[1] - menu_height
             scale = min(current_size[0] / BASE_WIDTH, available_h / BASE_HEIGHT)
             new_w, new_h = int(BASE_WIDTH * scale), int(BASE_HEIGHT * scale)
             
             scaled_v_screen = pygame.transform.smoothscale(self.virtual_screen, (new_w, new_h))
             self.screen.blit(scaled_v_screen, ((current_size[0] - new_w)//2, menu_height + (available_h - new_h)//2))
+
+            # 4. Draw Menu Dropdown (floating part) LAST - over everything else on screen
+            self.menu_bar.draw_dropdown(self.screen)
 
             # Emergency Stop Overlay
             if self.button_emergency_stop.show_emergency_input:
