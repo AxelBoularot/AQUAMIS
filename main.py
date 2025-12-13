@@ -223,7 +223,7 @@ class App():
         )
 
         # 3D Cube
-        self.cube = Cube.Cube(position=(750, 250), size=1.5, fov=256, viewer_distance=4)
+        self.cube = Cube.Cube(position=(1000, 100), size=0.5, fov=256, viewer_distance=4)
         self.cube_sprite_group = pygame.sprite.Group(self.cube)
 
         # Logos
@@ -517,33 +517,7 @@ class App():
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
             self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
 
-            # --- Draw keyboard buttons (AZE over QSD) - outline only ---
-            for info in self.key_buttons.values():
-                r = info["rect"]
-                pressed = info["pressed"]
-
-                # subtle shadow (optional, keep very light)
-                shadow_rect = r.move(3, 3)
-                pygame.draw.rect(self.virtual_screen, (8, 8, 8), shadow_rect, border_radius=10)
-
-                # border only: white when pressed, gray when not
-                if pressed:
-                    border_color = (255, 255, 255)
-                    border_width = 4
-                    label_color = (255, 255, 255)
-                else:
-                    border_color = (110, 110, 110)
-                    border_width = 2
-                    label_color = (220, 220, 220)
-
-                # no fill, only outline
-                pygame.draw.rect(self.virtual_screen, border_color, r, border_width, border_radius=10)
-
-                # label centered
-                lbl_surf = self.font15.render(info["label"], True, label_color)
-                lbl_rect = lbl_surf.get_rect(center=r.center)
-                self.virtual_screen.blit(lbl_surf, lbl_rect)
-
+    
             # 4. Video & AI Processing (Optimized)
             frame = None
             if start_screen_module.USE_PHONE_SENSORS and start_screen_module.phone_video_frame is not None:
