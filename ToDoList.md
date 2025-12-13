@@ -1,25 +1,26 @@
-    A faire absolument :
-
-à faire    -   Faire des commentaires sur le code pour qu'il soit compréhensible par n'importe qui (genre Corialie)
-à faire    -   Alléger le code (fonctions, sous-fonctions, classes, librairies, etc ...)
-
-Batterie :  
-à faire                -   Affichage de la batterie en temps réel (celle du PC?)
-à faire                -   Indicateur de niveau de la batterie en temps réel (0 à 100%)
-à faire                -   Estimation du temps de naviuation restane en fonction du niveau de batterie
-
-Interface :
-à faire    -   Indicateur d'usage des ballasts (0 à100%)
-à faire     -   Indicateur de vitesse (noeud ou km/h via switch)
-à faire    -   Indicateur de pression (en bar) + profondeur (en mètre)
-
-    A faire une fois le reste fais uniquement:
-
-à faire    -   si l'usager montre un outil, Amis le reconnait et ouvre le rack de rangement
-à faire    -   Amis reconnait l'astronaute et le suit à une distance donnée
-
-à faire    -   Anticiper les obstacles pour que le cap soit gardé en évitant la collision (l'afficher à l'écran 
-                pour que l'utilisateur réagisse? envoyer un signal? qu'il bouge tout seul?)
-à faire    -   Possibilité d'enregistrer l'interface lors du fonctionnement sous forme de vidéo
-à faire - changer yolo vers un yolo qui peut changer les objets à reconnaitre.
-
+Reprendre le code de l’année précédente
+§ Découper les fonctions et sous fonctions
+§ Ajouter des commentaire pour rendre le code déchiffrable rapidement
+§ Création de librairies pour alléger le code principal
+o Evolution de l’interface de controle
+§ Affichage du niveau de batteries en temps réel
+§ Graphe représentant la position d’Aqu’Amis sur 3 axes
+§ Indicateur du niveau de batterie (0 à 100%) et estimation du temps de
+navigation restante
+§ Indicateur de la force de signal de communication
+§ Indicateur d’usage des ballasts (0 à 100%)
+§ Indicateur de vitesse d’Aquamis (Nœud ou Km/h via un switch)
+§ Indicateur de Pression (en Bar) et de profondeur (en mètre)
+o Fonctionnalités avancés
+§ Proposer et développer des actions réalisées par Aqu’Amis lors de la
+reconnaissance de gestes ou d’objet de l’utilisateur (exemples : l’usager
+montre une clé plate, le rack de rangement s’ouvre pour que l’usager puisse
+la ranger. L’usager s’éloigne, Aqu’Amis le suit en respectant une distance
+donnée.)
+§ Anticiper les obstacles sur la « route » d’Acqu’Amis afin de garder le cap tout
+en évitant une collision
+o Possibilité de télécharger la vidéo du test avec toutes les télémétries (évolution
+%batterie, orientation 3 axes, vitesse, evo % ballast, température électronique, force
+signal)
+o Fourniture d’un Planning détaillé des activités (enchainement des tâches, priorisation,
+identification du chemin critique,..)
