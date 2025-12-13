@@ -386,9 +386,6 @@ class App():
             for event in pygame.event.get():
                 if 'IP_MODAL' in globals():
                     if ip_modal_handle_event(event): continue
-
-                # delegate key/mouse events for the visual keys
-                self.keybinds.handle_event(event)
                 
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -441,28 +438,6 @@ class App():
                     for button in self.all_buttons:
                         if button.rect.collidepoint(mouse_pos):
                             button.click(mouse_pos)
-
-                # Text Entry Handling
-                if event.type == pygame.KEYDOWN:
-                    if self.input_active_lm:
-                        if event.key == pygame.K_RETURN:
-                            if self.input_text_lm.isdigit():
-                                self.vitesse_gauche = int(self.input_text_lm)
-                            self.input_active_lm = False
-                        elif event.key == pygame.K_BACKSPACE:
-                            self.input_text_lm = self.input_text_lm[:-1]
-                        else:
-                            self.input_text_lm += event.unicode
-                    
-                    if self.input_active_rm:
-                        if event.key == pygame.K_RETURN:
-                            if self.input_text_rm.isdigit():
-                                self.vitesse_droit = int(self.input_text_rm)
-                            self.input_active_rm = False
-                        elif event.key == pygame.K_BACKSPACE:
-                            self.input_text_rm = self.input_text_rm[:-1]
-                        else:
-                            self.input_text_rm += event.unicode
 
             # 2. Data Updates & Logic
             self.virtual_screen.fill((0, 0, 0))
@@ -545,7 +520,7 @@ class App():
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
             self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
 
-            # --- Draw keyboard buttons (AZE over QSD) - outline only ---
+            """# --- Draw keyboard buttons (AZE over QSD) - outline only ---
             for info in self.key_buttons.values():
                 r = info["rect"]
                 pressed = info["pressed"]
@@ -570,7 +545,7 @@ class App():
                 # label centered
                 lbl_surf = self.font15.render(info["label"], True, label_color)
                 lbl_rect = lbl_surf.get_rect(center=r.center)
-                self.virtual_screen.blit(lbl_surf, lbl_rect)
+                self.virtual_screen.blit(lbl_surf, lbl_rect)"""
 
             # 4. Video & AI Processing (Optimized)
             frame = None
