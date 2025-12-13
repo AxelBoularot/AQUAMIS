@@ -5,9 +5,9 @@ import json
 import threading
 from time import sleep
 
-PORT = "COM5"  # ⚠️ Vérifie ton port série !
+PORT = "COM5"
 BAUDRATE = 115200
-ser = None  # Le port série sera initialisé après activation de la caméra
+ser = None
 
 class VideoStream:
     def __init__(self, resolution=(320, 240), fps=60):
@@ -31,7 +31,7 @@ class VideoStream:
             self.camera.release()
 
 class SocketManager:
-    def __init__(self, host='0.0.0.0', video_port=9999, data_port=8888):#ip ordinateur
+    def __init__(self, host='0.0.0.0', video_port=9999, data_port=8888):
         self.host = host
         self.video_port = video_port
         self.data_port = data_port
@@ -42,20 +42,16 @@ class SocketManager:
         self.running = True
 
     def setup_sockets(self):
-        # Configuration des sockets
         self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
-        # Options des sockets
         for sock in [self.video_socket, self.data_socket]:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
         
-        # Bind
         self.video_socket.bind((self.host, self.video_port))
         self.data_socket.bind((self.host, self.data_port))
         
-        # Listen
         self.video_socket.listen(1)
         self.data_socket.listen(1)
         
@@ -84,20 +80,18 @@ class StreamServer:
         self.running = True
     
     def envoyer_json(self, data):
-        """Envoie un JSON à Arduino."""
         json_str = json.dumps(data) + "\n"
         ser.write(json_str.encode('utf-8'))
 
     def lire_json(self):
-        """Lit un JSON valide depuis Arduino sans bloquer."""
         try:
             ligne = ser.readline().decode('utf-8').strip()
-            if ligne.startswith("{"):  # Vérifier si c'est un JSON valide
+            if ligne.startswith("{"):
                 return json.loads(ligne)
             elif ligne:
-                print(f"🔸 Message ignoré : {ligne}")  # Pour le débogage
+                print(f"Message ignoré : {ligne}")
         except json.JSONDecodeError:
-            print(f"⚠️ Erreur JSON : {ligne}")
+            print(f"Erreur JSON : {ligne}")
         return None
     
     def handle_data(self):
