@@ -27,7 +27,7 @@ from dependencies.Loading_Screen import show_loading_screen
 from dependencies.IP_Config import load_ip, ip_modal_handle_event, ip_modal_draw, open_excel_table_console, open_tk_window
 import dependencies.start_sreen as start_screen_module
 from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
-from dependencies.keybinds import KeyCluster
+#from dependencies.keybinds import KeyCluster
 
 # ============================================================
 # Initialisation AI & Device
@@ -243,7 +243,7 @@ class App():
         )
         self.graph_angles = Graphs_Angles(self.virtual_screen, 240, 170, 180)
 
-        # --- Key buttons layout: row1 AZE, row2 QSD (outline only) ---
+        """# --- Key buttons layout: row1 AZE, row2 QSD (outline only) ---
         labels_row1 = ["A", "Z", "E"]
         labels_row2 = ["Q", "S", "D"]
         key_consts = {
@@ -279,7 +279,7 @@ class App():
                 "pressed": False,
                 "label": lab
             }
-        
+        """
     # --- Loading Methods ---
     def is_loading(self):
         return not self.loading_complete
