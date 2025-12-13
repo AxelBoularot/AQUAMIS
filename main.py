@@ -27,7 +27,6 @@ from dependencies.Loading_Screen import show_loading_screen
 from dependencies.IP_Config import load_ip, ip_modal_handle_event, ip_modal_draw, open_excel_table_console, open_tk_window
 import dependencies.start_sreen as start_screen_module
 from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
-#from dependencies.keybinds import KeyCluster
 
 # ============================================================
 # Initialisation AI & Device
@@ -243,43 +242,6 @@ class App():
         )
         self.graph_angles = Graphs_Angles(self.virtual_screen, 240, 170, 180)
 
-        """# --- Key buttons layout: row1 AZE, row2 QSD (outline only) ---
-        labels_row1 = ["A", "Z", "E"]
-        labels_row2 = ["Q", "S", "D"]
-        key_consts = {
-            "A": pygame.K_a, "Z": pygame.K_z, "E": pygame.K_e,
-            "Q": pygame.K_q, "S": pygame.K_s, "D": pygame.K_d
-        }
-        self.key_map = key_consts
-
-        # visual layout
-        btn_w, btn_h = 70, 54
-        gap = 12
-        # row1
-        total_w_row1 = len(labels_row1) * btn_w + (len(labels_row1) - 1) * gap
-        start_x_row1 = BASE_WIDTH // 2 - total_w_row1 // 2
-        y_row1 = BASE_HEIGHT - 120
-        # row2 (centered under row1)
-        total_w_row2 = len(labels_row2) * btn_w + (len(labels_row2) - 1) * gap
-        start_x_row2 = BASE_WIDTH // 2 - total_w_row2 // 2
-        y_row2 = BASE_HEIGHT - 48
-
-        self.key_buttons = {}
-        for i, lab in enumerate(labels_row1):
-            x = start_x_row1 + i * (btn_w + gap)
-            self.key_buttons[lab] = {
-                "rect": pygame.Rect(x, y_row1, btn_w, btn_h),
-                "pressed": False,
-                "label": lab
-            }
-        for i, lab in enumerate(labels_row2):
-            x = start_x_row2 + i * (btn_w + gap)
-            self.key_buttons[lab] = {
-                "rect": pygame.Rect(x, y_row2, btn_w, btn_h),
-                "pressed": False,
-                "label": lab
-            }
-        """
     # --- Loading Methods ---
     def is_loading(self):
         return not self.loading_complete
@@ -520,32 +482,6 @@ class App():
             self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
             self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
 
-            """# --- Draw keyboard buttons (AZE over QSD) - outline only ---
-            for info in self.key_buttons.values():
-                r = info["rect"]
-                pressed = info["pressed"]
-
-                # subtle shadow (optional, keep very light)
-                shadow_rect = r.move(3, 3)
-                pygame.draw.rect(self.virtual_screen, (8, 8, 8), shadow_rect, border_radius=10)
-
-                # border only: white when pressed, gray when not
-                if pressed:
-                    border_color = (255, 255, 255)
-                    border_width = 4
-                    label_color = (255, 255, 255)
-                else:
-                    border_color = (110, 110, 110)
-                    border_width = 2
-                    label_color = (220, 220, 220)
-
-                # no fill, only outline
-                pygame.draw.rect(self.virtual_screen, border_color, r, border_width, border_radius=10)
-
-                # label centered
-                lbl_surf = self.font15.render(info["label"], True, label_color)
-                lbl_rect = lbl_surf.get_rect(center=r.center)
-                self.virtual_screen.blit(lbl_surf, lbl_rect)"""
 
             # 4. Video & AI Processing (Optimized)
             frame = None
