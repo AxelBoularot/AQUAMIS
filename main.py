@@ -451,7 +451,7 @@ class App():
             self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
 
             # Draw Logs
-            self.log_system.draw(self.virtual_screen, 1120, 200, 370, 150)
+            self.log_system.draw(self.virtual_screen, 10, 200, 370, 150)
 
             # Timer
             elapsed = time.time() - self.start_time
