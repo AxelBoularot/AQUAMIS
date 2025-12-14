@@ -1,6 +1,5 @@
 import pygame
 
-# Palette de couleurs (Thème Sombre)
 BG_COLOR = (25, 25, 25)
 HOVER_COLOR = (45, 45, 45)
 ACTIVE_COLOR = (60, 60, 60)
@@ -13,7 +12,6 @@ class MenuBar:
         self.font = font
         self.items = items
         
-        # Configuration Layout
         self.padding_x = 16
         self.padding_y = 8
         self.item_spacing = 4
@@ -22,19 +20,15 @@ class MenuBar:
         self.bar_height = 0
         self.bar_width = 0
         
-        # --- CORRECTION ICI : Initialisation de l'attribut manquant ---
         self.menu_height = 0 
         
-        # État
         self.item_rects = []
         self.open_index = None
         self.hover_index = None
         self.hover_sub_index = None
         
-        # Cache texte
         self._text_cache = {}
 
-        # On construit le layout une première fois pour avoir une menu_height valide dès le début
         self._build_layout()
 
     def _get_text_surf(self, text):
@@ -43,16 +37,13 @@ class MenuBar:
         return self._text_cache[text]
 
     def _build_layout(self):
-        """Calcule les positions des éléments de la barre principale."""
         rects = []
         current_x = self.bar_margin_left + self.padding_x
         
-        # Calcul de la hauteur basé sur la police
         sample_surf = self._get_text_surf("Test")
         item_height = sample_surf.get_height() + self.padding_y * 2
         self.bar_height = item_height
 
-        # --- CORRECTION ICI : Calcul de la hauteur totale pour l'extérieur ---
         self.menu_height = self.bar_margin_top + self.bar_height + 10
 
         for label, submenu in self.items:
@@ -68,20 +59,17 @@ class MenuBar:
         return rects
 
     def update(self, mouse_pos):
-        """Met à jour les survols (hovers)."""
         self.hover_index = None
         self.hover_sub_index = None
         
-        # Vérification barre principale
         for i, (_, rect, _) in enumerate(self.item_rects):
             if rect.collidepoint(mouse_pos):
                 self.hover_index = i
                 break
         
-        # Vérification sous-menu ouvert
         if self.open_index is not None:
             _, parent_rect, submenu = self.item_rects[self.open_index]
-            if submenu:
+            if isinstance(submenu, list):
                 dropdown_rect, item_height, _ = self._calculate_dropdown_geometry(parent_rect, submenu)
                 if dropdown_rect.collidepoint(mouse_pos):
                     relative_y = mouse_pos[1] - dropdown_rect.y - 4
@@ -148,7 +136,7 @@ class MenuBar:
         if surface is None or self.open_index is None: return
 
         _, parent_rect, submenu = self.item_rects[self.open_index]
-        if not submenu: return
+        if not isinstance(submenu, list): return
 
         dropdown_rect, item_height, menu_width = self._calculate_dropdown_geometry(parent_rect, submenu, surface.get_height())
         
@@ -183,7 +171,8 @@ class MenuBar:
         # 1. Clic dans le menu déroulant
         if self.open_index is not None:
             _, parent_rect, submenu = self.item_rects[self.open_index]
-            if submenu:
+            # Check if submenu is a list (dropdown) or callable (direct action)
+            if isinstance(submenu, list):
                 dropdown_rect, item_height, _ = self._calculate_dropdown_geometry(parent_rect, submenu)
                 if dropdown_rect.collidepoint(mouse_pos):
                     relative_y = mouse_pos[1] - dropdown_rect.y - 4
@@ -200,6 +189,14 @@ class MenuBar:
         for i, (_, rect, submenu) in enumerate(self.item_rects):
             if rect.collidepoint(mouse_pos):
                 clicked_on_bar = True
+                
+                # If submenu is callable, execute immediately
+                if callable(submenu):
+                    submenu()
+                    self.open_index = None
+                    return True
+                
+                # Otherwise toggle dropdown
                 if self.open_index == i:
                     self.open_index = None
                 else:

@@ -6,27 +6,16 @@ from tkinter import filedialog
 from dependencies.Variable import WHITE, CARD_BG
 
 def save_ip(ip_address):
-    """Sauvegarde l'adresse IP dans le fichier JSON."""
-    # On suppose que le fichier JSON doit contenir un dictionnaire avec la clé "ip"
     data = {"ip": ip_address}
     with open("data/data.json", "w") as f:
         json.dump(data, f)
-    # Record last saved IP for non-blocking modal flow
     globals()['LAST_SAVED_IP'] = ip_address
-    print("Adresse IP sauvegardée :", ip_address)
 
 def load_ip():
     with open("data/data.json", "r",encoding="utf-8") as f:
         return json.load(f)
 
 def open_tk_window():
-    """Open a Pygame-based IP modal (non-blocking initializer).
-
-    This replaces the previous Tkinter dialog. Calling this function
-    initializes `globals()['IP_MODAL']` state; the main loops handle
-    events and drawing while the modal is active so other rendering
-    (graphs, animations) continue running.
-    """
     surf = pygame.display.get_surface()
     if surf is None:
         return
@@ -44,20 +33,17 @@ def open_tk_window():
 
 
 def validate_ip(ip_str: str) -> bool:
-    """Basic IPv4 validation (x.x.x.x with 0-255 each)."""
     import re
     pattern = r'^\s*(?:25[0-5]|2[0-4]\d|1?\d{1,2})(?:\.(?:25[0-5]|2[0-4]\d|1?\d{1,2})){3}\s*$'
     return re.match(pattern, ip_str) is not None
 
 
 def ip_modal_handle_event(event):
-    """Handle events for the IP modal; return True if event consumed."""
     state = globals().get('IP_MODAL')
     if not state:
         return False
 
     if event.type == pygame.QUIT:
-        # Let main loop handle quitting; consume here
         return True
 
     if event.type == pygame.KEYDOWN:

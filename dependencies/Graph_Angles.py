@@ -32,7 +32,6 @@ class Graphs_Angles:
             self.time_stamps.pop(0)
     
     def draw_grid(self):
-        # Graduations/grid disabled per user request — no drawing here
         return
     
     def draw(self):

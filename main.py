@@ -5,8 +5,8 @@ import threading
 import json
 import cv2
 import numpy as np
-import torch
-from ultralytics import YOLO
+import subprocess
+import re
 from datetime import datetime
 
 # Dependencies
@@ -15,7 +15,7 @@ from dependencies.Password import Special_button
 from dependencies.Graph_Pressure_Depth import Graphs_Main
 from dependencies.Graph_Angles import Graphs_Angles
 from dependencies.lib_backend import VideoReceiver, DataHandler, SocketClient
-from dependencies.Scaling import convert_mouse_pos
+from dependencies.Scaling import convert_mouse_pos, convert_mouse_pos_with_menu
 from dependencies.Font import load_brand_font
 from dependencies.Button import Button
 from dependencies.MenuBar import MenuBar
@@ -27,70 +27,13 @@ from dependencies.IP_Config import load_ip, ip_modal_handle_event, ip_modal_draw
 import dependencies.start_sreen as start_screen_module
 from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
 from dependencies.Logsys import LogSystem
+from dependencies.AI_Config import load_yolo_model
+from dependencies.Dashboard import Dashboard
 
 # ============================================================
 # Initialisation AI & Device
 # ============================================================
-try:
-    print("CUDA available:", torch.cuda.is_available())
-except Exception as e:
-    print(f"Error checking CUDA availability: {e}")
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {device}")
-# Load model once at startup
-model = YOLO("object_detection_lib/yolo11n.pt").to(device)
-
-# ============================================================
-# Log System Class
-# ============================================================
-class LogSystem:
-    def __init__(self, font, max_logs=100):
-        self.font = font
-        self.max_logs = max_logs
-        self.logs = []  # List of (timestamp, message, color)
-        self.scroll_offset = 0
-        self.line_height = 20
-        self.visible_lines = 7  # Adjust based on zone height
-
-    def add_log(self, message, level="info"):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        if level == "info":
-            color = BLUE
-        elif level == "warning":
-            color = YELLOW
-        elif level == "error":
-            color = RED
-        else:
-            color = WHITE
-        self.logs.append((timestamp, message, color))
-        if len(self.logs) > self.max_logs:
-            self.logs.pop(0)
-
-    def handle_scroll(self, event):
-        if event.type == pygame.MOUSEWHEEL:
-            self.scroll_offset += event.y
-            self.scroll_offset = max(0, min(self.scroll_offset, max(0, len(self.logs) - self.visible_lines)))
-
-    def draw(self, surface, x, y, width, height):
-        # Draw background
-        pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height))
-        pygame.draw.rect(surface, WHITE, (x, y, width, height), 1)
-        
-        # Draw title
-        title_surf = self.font.render("System Logs", True, YELLOW)
-        surface.blit(title_surf, (x + 5, y + 5))
-        
-        # Draw logs
-        start_idx = self.scroll_offset
-        for i in range(self.visible_lines):
-            idx = start_idx + i
-            if idx >= len(self.logs):
-                break
-            timestamp, message, color = self.logs[idx]
-            text = f"[{timestamp}] {message}"
-            text_surf = self.font.render(text, True, color)
-            surface.blit(text_surf, (x + 5, y + 25 + i * self.line_height))
+model, device = load_yolo_model()
 
 # ============================================================
 # Initialisation de Pygame
@@ -133,6 +76,9 @@ class App():
         self.font = load_brand_font(20, bold=False)
         self.font15 = load_brand_font(15, bold=False)
         self.font18 = load_brand_font(18, bold=False)
+        
+        # --- Dashboard ---
+        self.dashboard = Dashboard(self.font, self.font15, self.font18)
 
         # Start loading thread
         load_thread = threading.Thread(target=self.load_resources)
@@ -196,16 +142,17 @@ class App():
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
         self.button_emergency_stop = Special_button(20, 510, 350, 110, 'EMERGENCY STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.button_action, "EMERGENCY STOP HAS BEEN TRIGGERED")
         self.switch_com = Button(20, 400, 350, 80, 'SWITCH COM', self.font, WHITE, self.button_color, self.button_action, BCP, "Comms have been switched!")
-        self.button_save_data = Button(1130, 400, 350, 80, 'SAVE DATA', self.font, WHITE, self.button_color, self.button_action, BCP, "Currently saving Data...")
 
-        self.all_buttons = [self.button_stop, self.button_emergency_stop,
-                            self.switch_com, self.button_save_data]
+        self.all_buttons = []
 
         # Menu Bar
         menu_items = [
-            ("File", [("Open IP...", self.action_open), ("Exit", self.action_exit)]),
+            ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data), ("Exit", self.action_exit)]),
+            ("Start", self.action_start),
+            ("Stop", self.action_stop),
+            ("Emergency Stop", self.action_emergency_stop),
             ("View", [("Toggle Fullscreen", self.action_toggle_fullscreen)]),
-            ("Tools", [("Restart Stream", lambda: print('Restart stream'))]),
+            ("Tools", [("Restart Stream", lambda: None)]),
             ("Help", [("About", self.action_about)])
         ]
         self.menu_bar = MenuBar(self.font15, menu_items)
@@ -213,11 +160,9 @@ class App():
         # Sprite Group
         self.all_sprites = pygame.sprite.Group()
         self.all_sprites.add(
-            self.switch_com,
-            self.button_save_data, self.button_emergency_stop,
             self.comm_box, self.cam_box, self.mpu_box, self.servo_box, self.motor_box,
-            self.pressure_sensor_box, self.lineh1, self.lineh2, self.lineh3, self.lineh4, self.lineh5,
-            self.linev1, self.linev2, self.linev3, self.linev4
+            self.pressure_sensor_box, self.lineh2, self.lineh3, self.lineh5,
+            self.linev1, self.linev2
         )
 
         # 3D Cube
@@ -254,7 +199,7 @@ class App():
         self.loading_progress = 10
         self.current_loading_step = "Loading configuration..."
         host = load_ip()["ip"]
-        print(f"Selected IP: {host}")
+        # print(f"Selected IP: {host}")
 
         # Setup dummy file for phone mode
         if start_screen_module.USE_PHONE_SENSORS:
@@ -317,14 +262,31 @@ class App():
             self.envoie["info_fonction"][i] = 0
 
     def button_start_action(self):
-        print("\n✅ System is already running - AMIS is LIVE!")
+        print("\nSystem is already running - AMIS is LIVE!")
 
     def button_action(self):
         print("\nAction Triggered")
 
     # --- Menu Actions ---
+    def action_start(self):
+        self.log_system.add_log("System Started", "info")
+        print("\nSystem Started")
+
+    def action_stop(self):
+        self.but_stop() # Reset commands
+        self.log_system.add_log("System Stopped", "warning")
+        print("\nSystem Stopped")
+
+    def action_emergency_stop(self):
+        # Trigger emergency stop popup
+        self.button_emergency_stop.emergency_trigger()
+        self.log_system.add_log("Emergency Stop Requested", "warning")
+
     def action_open(self):
         open_tk_window()
+
+    def action_save_data(self):
+        open_excel_table_console(self.value)
 
     def action_exit(self):
         self.running = False
@@ -333,7 +295,8 @@ class App():
         pygame.display.toggle_fullscreen()
 
     def action_about(self):
-        print("AQUAMIS - Interface v1.1 - Optimized")
+        pass
+        # print("AQUAMIS - Interface v1.1 - Optimized")
 
     # --- Main Loop ---
     def main(self):
@@ -352,6 +315,22 @@ class App():
                 if event.type == pygame.QUIT:
                     self.running = False
 
+                # Handle Log System Scrolling
+                # Log System Rect is (10, 200, 370, 180) on virtual screen
+                # We need to map mouse events if they are on the virtual screen area
+                # But handle_event expects raw events usually. 
+                # Since LogSystem is drawn on virtual_screen, we should check collision with virtual coords
+                
+                # Convert mouse pos for check
+                m_pos = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
+                log_rect = pygame.Rect(10, 200, 370, 180)
+                
+                # Handle Log System Scrolling
+                if event.type in (pygame.MOUSEWHEEL, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                    v_pos = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
+                    log_rect = pygame.Rect(10, 200, 370, 180)
+                    self.log_system.handle_event(event, log_rect, mouse_pos=v_pos)
+
                 if event.type == pygame.VIDEORESIZE:
                     self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
 
@@ -363,39 +342,30 @@ class App():
                     result_emergency = self.button_emergency_stop.handle_event_emergency(event)
 
                     if result_emergency == "emergency_stop":
-                        print("🛑 EMERGENCY STOP - Stopping systems...")
+                        # print("EMERGENCY STOP - Stopping systems...")
                         if self.socket_client and hasattr(self.socket_client, 'running') and self.socket_client.running:
                             self.socket_client.close()
                         if self.video_receiver:
                             self.video_receiver.running = False
                         if self.data_handler:
                             self.data_handler.running = False
-                        print("✅ Systems stopped.")
+                        # print("Systems stopped.")
                     self.comm_box.update_status()
                
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.button_emergency_stop.show_emergency_input: continue
 
-                    mouse_pos = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
-                    virtual_event_pos = convert_mouse_pos(event.pos, self.screen)
+                    # Use new conversion that accounts for menu bar
+                    menu_h = self.menu_bar.menu_height
+                    mouse_pos = convert_mouse_pos_with_menu(pygame.mouse.get_pos(), self.screen, menu_h)
+                    virtual_event_pos = convert_mouse_pos_with_menu(event.pos, self.screen, menu_h)
 
                     # Buttons checks
-                    if self.button_emergency_stop.rect.collidepoint(mouse_pos):
-                        self.button_emergency_stop.emergency_trigger()
-
-                    if self.switch_com.rect.collidepoint(mouse_pos):
-                        open_tk_window()
-
-                    if self.button_stop.is_clicked(virtual_event_pos):
-                        self.button_stop.stop_trigger()
-
-                    if self.button_save_data.rect.collidepoint(mouse_pos):
-                        open_excel_table_console(self.value)
-
-                    if self.button_start.rect.collidepoint(mouse_pos):
-                        self.button_start.click(mouse_pos)
-
                     self.menu_bar.handle_click(pygame.mouse.get_pos())
+                    
+                    # Dashboard Interaction
+                    # Use virtual_event_pos for click accuracy
+                    self.dashboard.handle_event(event, virtual_event_pos)
 
                     for button in self.all_buttons:
                         if button.rect.collidepoint(mouse_pos):
@@ -451,36 +421,79 @@ class App():
             self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
 
             # Draw Logs
-            self.log_system.draw(self.virtual_screen, 10, 200, 370, 180)
+            # --- Left Panel Drawing ---
+            # 1. Logo & Title
+            self.virtual_screen.blit(self.logo_amis_big, (20, 20))
+            self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (100, 40))
+
+            # 2. Logs (Just below logo)
+            # Use new conversion for logs too
+            menu_h = self.menu_bar.menu_height
+            mouse_pos_virtual = convert_mouse_pos_with_menu(pygame.mouse.get_pos(), self.screen, menu_h)
+            self.log_system.draw(self.virtual_screen, 10, 100, 370, 200, mouse_pos=mouse_pos_virtual)
+
+            # 3. Dashboard (Signal, Ballast, Speed)
+            # Calculate Dashboard Values
+            current_speed = 0.0
+            current_ballast = 0
+            current_signal = 0
+            
+            if start_screen_module.USE_PHONE_SENSORS:
+                # 1. Speed from Pitch (Tilt forward = Speed)
+                # Pitch is usually negative when tilting phone forward (top away from you)
+                # We'll assume a deadzone of 5 degrees
+                tilt = self.pitch
+                if abs(tilt) > 5:
+                    # Map 5-45 degrees to 0-15 Knots using a QUADRATIC curve
+                    # This makes it feel less like a direct angle copy and more like throttle
+                    normalized_tilt = min(1.0, (abs(tilt) - 5) / 40.0)
+                    current_speed = (normalized_tilt ** 2) * 15.0
+                
+                # 2. Signal from Windows Wi-Fi
+                try:
+                    # Run netsh command to get signal strength
+                    # Use creationflags to hide console window
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    
+                    output = subprocess.check_output("netsh wlan show interfaces", startupinfo=startupinfo).decode('utf-8', errors='ignore')
+                    match = re.search(r"Signal\s*:\s*(\d+)%", output)
+                    if match:
+                        current_signal = int(match.group(1))
+                except:
+                    current_signal = 50 # Default if error
+
+                # 3. Ballast (Fixed as requested)
+                # User indicated we can't know this value in this mode, so we keep it fixed.
+                current_ballast = 50
+
+            elif self.data_handler:
+                 with self.data_handler.data_lock:
+                    data = self.data_handler.received_data
+                    current_speed = data.get("Speed", 0.0)
+                    current_ballast = data.get("Ballast", 0)
+                    current_signal = data.get("Signal", 0)
+
+            self.dashboard.update_data(speed=current_speed, ballast=current_ballast, signal=current_signal)
+            
+            # Use new conversion for hover effects
+            menu_h = self.menu_bar.menu_height
+            mouse_pos_virtual = convert_mouse_pos_with_menu(pygame.mouse.get_pos(), self.screen, menu_h)
+            
+            self.dashboard.draw(self.virtual_screen, mouse_pos=mouse_pos_virtual)
 
             # Timer
             elapsed = time.time() - self.start_time
             self.virtual_screen.blit(self.font18.render(f"{int(elapsed)//60:02d} min {int(elapsed)%60:02d} s", True, WHITE), (1390, 185))
 
             # Draw Static Sprites
-            mouse_pos_virtual = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
+            # mouse_pos_virtual is already updated above
             for button in self.all_buttons:
                 button.update(mouse_pos_virtual)
             self.all_sprites.draw(self.virtual_screen)
 
-            # Draw Start/Stop Buttons explicitly
-            self.button_start.update(mouse_pos_virtual)
-            self.virtual_screen.blit(self.button_start.image, self.button_start.rect)
-            
-            self.button_stop.update(mouse_pos_virtual)
-            self.virtual_screen.blit(self.button_stop.image, self.button_stop.rect)
-            self.button_stop.draw(self.virtual_screen, self.font)
-
-            # Cube Animation
-            self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
-            self.cube_sprite_group.draw(self.virtual_screen)
-
             # Decorative Borders
             pygame.draw.rect(self.virtual_screen, BLUE, (390, 10, 720, 480), 2) # Main Vid Border
-            
-            # Logo
-            self.virtual_screen.blit(self.logo_amis_big, self.logo_amis_big_rect)
-            self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (280, 20))
 
 
             # 4. Video & AI Processing (Optimized)
@@ -517,8 +530,13 @@ class App():
                 except Exception as e:
                     print(f"Video Error: {e}")
 
+            # Cube Animation (Drawn AFTER video to stay on top)
+            # Reverted pitch to original state as requested
+            self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
+            self.cube_sprite_group.draw(self.virtual_screen)
+
             # 5. Overlay Status
-            mode_text = "🧪 TEST MODE" if start_screen_module.USE_PHONE_SENSORS else "🛰️ SATELLITE MODE"
+            mode_text = "TEST MODE" if start_screen_module.USE_PHONE_SENSORS else "SATELLITE MODE"
             mode_color = (70, 179, 230) if start_screen_module.USE_PHONE_SENSORS else WHITE
             self.virtual_screen.blit(self.font.render(mode_text, True, mode_color), (1150, 20))
 
@@ -541,8 +559,8 @@ class App():
                 self.screen.fill(BLACK)
 
             # 2. Draw Menu Bar (fixed part) FIRST - on screen, same level as background
-            mouse_pos_virtual = convert_mouse_pos(pygame.mouse.get_pos(), self.screen)
-            self.menu_bar.update(mouse_pos_virtual)
+            # MenuBar is drawn on real screen, so use real mouse pos for hover
+            self.menu_bar.update(pygame.mouse.get_pos())
             self.menu_bar.draw_bar(self.screen)
             menu_height = self.menu_bar.menu_height
 
@@ -554,7 +572,7 @@ class App():
             scaled_v_screen = pygame.transform.smoothscale(self.virtual_screen, (new_w, new_h))
             self.screen.blit(scaled_v_screen, ((current_size[0] - new_w)//2, menu_height + (available_h - new_h)//2))
 
-            # 4. Draw Menu Dropdown (floating part) LAST - over everything else on screen
+            # 4. Draw Menu Dropdowns LAST (on top of everything)
             self.menu_bar.draw_dropdown(self.screen)
 
             # Emergency Stop Overlay
@@ -577,6 +595,15 @@ class App():
 
         # Cleanup
         pygame.quit()
+        
+        # Kill sensor process if it exists
+        if start_screen_module.sensor_process:
+            try:
+                start_screen_module.sensor_process.terminate()
+                start_screen_module.sensor_process = None
+            except:
+                pass
+
         if not start_screen_module.USE_PHONE_SENSORS and self.socket_client:
             self.socket_client.close()
         if self.video_receiver:

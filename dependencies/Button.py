@@ -5,10 +5,6 @@ from dependencies.Variable import WHITE
 BCP = (0, 74, 124) # Button Color Pressed (Default Blue)
 
 class Button(pygame.sprite.Sprite):
-    """
-    Modern Button inspired by React Base-UI.
-    Features: Rounded corners, flat design, clean typography, hover effects.
-    """
     def __init__(self, x, y, width, height, text, font, text_color, button_color, action=None, button_color_pressed=BCP, message=""):
         super().__init__()
         self.rect = pygame.Rect(x, y, width, height)
@@ -63,7 +59,6 @@ class Button(pygame.sprite.Sprite):
                 self.action()
 
 def draw_modern_button(surface, x, y, w, h, text, font, is_hovered, is_primary=True):
-    """Updated modern button drawing function for compatibility."""
     rect = pygame.Rect(int(x), int(y), int(w), int(h))
     
     # Colors

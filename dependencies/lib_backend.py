@@ -16,7 +16,6 @@ class SocketClient:
         self.running = True
 
     def connect(self):
-        # Création et configuration des sockets
         self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -55,7 +54,6 @@ class VideoReceiver(threading.Thread):
 
     def receive_frame(self):
         try:
-            # Réception de la taille
             size_data = self.socket_client.video_socket.recv(4)
             if not size_data:
                 return None
@@ -63,7 +61,6 @@ class VideoReceiver(threading.Thread):
             if size == 0:
                 return None
 
-            # Réception des données
             data = b''
             while len(data) < size:
                 packet = self.socket_client.video_socket.recv(size - len(data))
@@ -71,7 +68,6 @@ class VideoReceiver(threading.Thread):
                     return None
                 data += packet
 
-            # Décodage de l'image
             img_array = np.frombuffer(data, dtype=np.uint8)
             frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             return frame
@@ -93,12 +89,10 @@ class DataHandler(threading.Thread):
                 # Envoi du message
                 msg_json = json.dumps(self.message_to_send).encode('utf-8')
                 size = len(msg_json).to_bytes(4, byteorder='big')
+                msg_json = json.dumps(self.message_to_send).encode('utf-8')
+                size = len(msg_json).to_bytes(4, byteorder='big')
                 self.socket_client.data_socket.sendall(size + msg_json)
 
-                # Réception de la réponse
-                size_data = self.socket_client.data_socket.recv(4)
-                if not size_data:
-                    continue
                 size = int.from_bytes(size_data, byteorder='big')
                 data = self.socket_client.data_socket.recv(size).decode('utf-8')
                 response = json.loads(data)

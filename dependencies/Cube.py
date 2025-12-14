@@ -2,7 +2,6 @@ import pygame
 import math
 
 def rotate_point(point, angle_x, angle_y, angle_z):
-    # Conversion des angles de degrés en radians
     rad_x = math.radians(angle_x)
     rad_y = math.radians(angle_y)
     rad_z = math.radians(angle_z)
@@ -74,14 +73,14 @@ class Cube(pygame.sprite.Sprite):
         y_axis = project_point(y_axis_transformed, self.rect.width, self.rect.height, self.fov, self.viewer_distance)
         z_axis = project_point(z_axis_transformed, self.rect.width, self.rect.height, self.fov, self.viewer_distance)
         
-        pygame.draw.line(self.image, (255, 0, 0), center, x_axis, 2)  # Axe X en rouge
-        pygame.draw.line(self.image, (0, 255, 0), center, y_axis, 2)  # Axe Y en vert
-        pygame.draw.line(self.image, (0, 0, 255), center, z_axis, 2)  # Axe Z en bleu
+        pygame.draw.line(self.image, (255, 0, 0), center, x_axis, 2)
+        pygame.draw.line(self.image, (0, 255, 0), center, y_axis, 2)
+        pygame.draw.line(self.image, (0, 0, 255), center, z_axis, 2)
 
         font = pygame.font.Font(None, 24)
-        """text_x = font.render(f"{self.angle_x:.2f}", True, (255, 0, 0))  # Rouge
-        text_y = font.render(f"{self.angle_y:.2f}", True, (0, 255, 0))  # Vert
-        text_z = font.render(f"{self.angle_z:.2f}", True, (0, 0, 255))  # Bleu
+        """text_x = font.render(f"{self.angle_x:.2f}", True, (255, 0, 0))
+        text_y = font.render(f"{self.angle_y:.2f}", True, (0, 255, 0))
+        text_z = font.render(f"{self.angle_z:.2f}", True, (0, 0, 255))
         self.image.blit(text_x, (105, 367))
         self.image.blit(text_y, (210, 367))
         self.image.blit(text_z, (310, 367))"""

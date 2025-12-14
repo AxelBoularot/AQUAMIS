@@ -28,25 +28,20 @@ class Special_button(pygame.sprite.Sprite):
         self.correct_stop = "stop"
         self.correct_emergency = "ready"
         self.screen = screen
-        # Animation variables
         self.fade_alpha = 0
         self.fade_speed = 60
         self.target_alpha = 0
         self.error_message = ""
         self.error_time = 0
-        # Mode test (téléphone)
         self.test_mode = False
         try:
             self.phone_ip = load_ip().get("ip", "")
         except Exception:
             self.phone_ip = ""
-        self.ip_input_active = False  # Si on est en train de saisir l'IP
+        self.ip_input_active = False
         self._draw_text()
 
     def draw(self, screen, font):
-        # Ne dessiner le bouton visible que dans l'écran de démarrage, pas dans l'interface principale
-        # Vérifier si on est dans show_password_input ou show_confirmation_input
-        
         if self.show_confirmation_input:
             font12 = pygame.font.SysFont('CenturySchoolBook', 12)
             pygame.draw.rect(screen, (0, 0, 0), pygame.Rect(20, 630, 170, 50))
@@ -89,15 +84,12 @@ class Special_button(pygame.sprite.Sprite):
     
     def handle_event_start(self, event):
         if self.show_password_input:
-            # Gestion du clic sur le toggle
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if hasattr(self, 'toggle_rect') and self.toggle_rect.collidepoint(event.pos):
                     self.test_mode = not self.test_mode
                     mode_text = "TEST MODE (Phone)" if self.test_mode else "NORMAL MODE (Satellite)"
-                    print(f"\n🔄 Mode changed to: {mode_text}")
                     return None
                 
-                # Gestion du clic sur le champ IP
                 if self.test_mode and hasattr(self, 'ip_input_rect'):
                     if self.ip_input_rect.collidepoint(event.pos):
                         self.ip_input_active = True
@@ -112,12 +104,11 @@ class Special_button(pygame.sprite.Sprite):
                             save_ip(self.phone_ip)
                         mode_text = "TEST MODE (Phone)" if self.test_mode else "NORMAL MODE (Satellite)"
                         print(f"\nInitializing System - AMIS has successfully started in {mode_text}!\n\n" 
-                              + "Timer has started!\n\n")
-                        self.target_alpha = 0  # Fade out
+                            + "Timer has started!\n\n")
+                        self.target_alpha = 0
                         self.password_text = ""
                         if self.action:
                             self.action()
-                        # Attendre que le fade out soit terminé
                         if self.fade_alpha <= 0:
                             self.show_password_input = False
                             return "switch_screen"
@@ -125,29 +116,25 @@ class Special_button(pygame.sprite.Sprite):
                     else:
                         print("\nWrong Password! Please try again.")
                         import time
-                        self.error_message = "❌ Incorrect password"
+                        self.error_message = "Incorrect password"
                         self.error_time = time.time()
                         self.password_text = ""
                         return None
                 elif event.key == pygame.K_ESCAPE:
-                    self.target_alpha = 0  # Fade out
+                    self.target_alpha = 0
                     if self.fade_alpha <= 0:
                         self.show_password_input = False
                     self.password_text = ""
                 elif event.key == pygame.K_BACKSPACE:
-                    # Si on est dans le champ IP, on efface l'IP
                     if self.ip_input_active:
                         self.phone_ip = self.phone_ip[:-1]
                     else:
                         self.password_text = self.password_text[:-1]
                 else:
-                    # Si on est dans le champ IP, on ajoute à l'IP
                     if self.ip_input_active:
-                        # Autoriser seulement les chiffres et les points
                         if event.unicode.isdigit() or event.unicode == '.':
                             self.phone_ip += event.unicode
                     else:
-                        # Accepter seulement les lettres et les chiffres
                         if event.unicode.isalnum():
                             self.password_text += event.unicode
     
@@ -156,18 +143,15 @@ class Special_button(pygame.sprite.Sprite):
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
                     if self.password_text.lower() == self.correct_stop:
-                        print("\nSuccessfully stopped AMIS!")
                         self.show_confirmation_input = False
                         sys.exit()
                         self.password_text = ""
                         if self.action:
                             self.action()
                     elif self.password_text.lower() == "cancel":
-                        print("\nCancelled stop action")
                         self.show_confirmation_input = False
                         self.password_text = ""
                     else:
-                        print("\nIncorrect input! Enter 'STOP' or 'CANCEL'")
                         self.password_text = ""
                 elif event.key == pygame.K_ESCAPE:
                     self.show_confirmation_input = False
@@ -175,7 +159,6 @@ class Special_button(pygame.sprite.Sprite):
                 elif event.key == pygame.K_BACKSPACE:
                     self.password_text = self.password_text[:-1]
                 else:
-                    # Accepter seulement les lettres et les chiffres
                     if event.unicode.isalnum():
                         self.password_text += event.unicode
     
@@ -184,19 +167,15 @@ class Special_button(pygame.sprite.Sprite):
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
                     if self.password_text.lower() == self.correct_emergency:
-                        print("\n🚨 EMERGENCY STOP CONFIRMED - SYSTEM STOPPED!")
                         self.show_emergency_input = False
                         self.password_text = ""
                         self.target_alpha = 0
-                        # Return a signal to shutdown systems
                         return "emergency_stop"
                     else:
-                        print("\nIncorrect input! Enter 'READY' to confirm emergency stop")
                         self.password_text = ""
                 elif event.key == pygame.K_BACKSPACE:
                     self.password_text = self.password_text[:-1]
                 else:
-                    # Accepter seulement les lettres et les chiffres
                     if event.unicode.isalnum():
                         self.password_text += event.unicode
         return None
@@ -215,10 +194,8 @@ class Special_button(pygame.sprite.Sprite):
         self.error_message = ""
     
     def _draw_modern_emergency_input(self, screen):
-        """Dessine une interface de confirmation d'emergency stop avec animation de fondu"""
         import time
         
-        # Animation de fade in/out
         if self.fade_alpha < self.target_alpha:
             self.fade_alpha = min(self.fade_alpha + self.fade_speed, self.target_alpha)
         elif self.fade_alpha > self.target_alpha:
@@ -227,24 +204,19 @@ class Special_button(pygame.sprite.Sprite):
         if self.fade_alpha <= 0:
             return
         
-        # Dimensions de l'écran
         screen_width, screen_height = screen.get_size()
         
-        # Arrière-plan flou avec effet de blur simulé
         blur_overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
         blur_overlay.fill((10, 18, 28, int(220 * self.fade_alpha / 255)))
         screen.blit(blur_overlay, (0, 0))
         
-        # Dimensions de la boîte de dialogue
         box_width = min(600, screen_width - 100)
         box_height = 280
         box_x = (screen_width - box_width) // 2
         box_y = (screen_height - box_height) // 2
         
-        # Surface de la boîte avec transparence
         dialog_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
         
-        # Ombre de la boîte
         shadow_offset = 12
         shadow = pygame.Surface((box_width + shadow_offset * 2, box_height + shadow_offset * 2), pygame.SRCALPHA)
         for i in range(shadow_offset, 0, -1):
@@ -254,10 +226,9 @@ class Special_button(pygame.sprite.Sprite):
                            border_radius=20)
         screen.blit(shadow, (box_x - shadow_offset, box_y - shadow_offset))
         
-        # Fond de la boîte avec dégradé
         for y in range(box_height):
             progress = y / box_height
-            color_top = (80, 20, 20)  # Rouge foncé pour emergency
+            color_top = (80, 20, 20)
             color_bottom = (50, 10, 10)
             r = int(color_top[0] + (color_bottom[0] - color_top[0]) * progress)
             g = int(color_top[1] + (color_bottom[1] - color_top[1]) * progress)
@@ -265,46 +236,38 @@ class Special_button(pygame.sprite.Sprite):
             pygame.draw.line(dialog_surface, (r, g, b, int(245 * self.fade_alpha / 255)), 
                            (0, y), (box_width, y))
         
-        # Bordure avec glow - couleur rouge vif pour emergency
         border_color = (255, 0, 0, int(self.fade_alpha))
         border_rect = pygame.Rect(0, 0, box_width, box_height)
         pygame.draw.rect(dialog_surface, border_color, border_rect, 4, border_radius=20)
         
-        # Titre
         title_font = pygame.font.SysFont('CenturySchoolbook', 24, bold=True)
         title_text = title_font.render("EMERGENCY STOP HAS BEEN TRIGGERED", True, (255, 100, 100))
         title_text.set_alpha(self.fade_alpha)
         title_rect = title_text.get_rect(centerx=box_width // 2, top=20)
         dialog_surface.blit(title_text, title_rect)
         
-        # Sous-titre
         subtitle_font = pygame.font.SysFont('CenturySchoolbook', 16)
         subtitle_text = subtitle_font.render("AMIS was temporarily stopped. Type 'Ready' to come back to the interface.", True, (200, 100, 100))
         subtitle_text.set_alpha(self.fade_alpha)
         subtitle_rect = subtitle_text.get_rect(centerx=box_width // 2, top=65)
         dialog_surface.blit(subtitle_text, subtitle_rect)
         
-        # Champ de saisie
         input_width = box_width - 80
         input_height = 55
         input_x = 40
         input_y = 120
         
-        # Fond du champ de saisie
         input_bg = pygame.Surface((input_width, input_height), pygame.SRCALPHA)
         pygame.draw.rect(input_bg, (70, 40, 40, int(200 * self.fade_alpha / 255)), 
                         (0, 0, input_width, input_height), border_radius=10)
         dialog_surface.blit(input_bg, (input_x, input_y))
         
-        # Bordure du champ avec animation
         border_glow = int(100 + 50 * math.sin(time.time() * 3))
         pygame.draw.rect(dialog_surface, (255, 0, 0, int(border_glow * self.fade_alpha / 255)), 
                         (input_x, input_y, input_width, input_height), 2, border_radius=10)
         
-        # Texte du champ
         input_font = pygame.font.SysFont('Arial', 24)
         
-        # Curseur clignotant
         display_text = self.password_text
         if int(time.time() * 2) % 2 == 0:
             display_text += "|"
@@ -314,7 +277,6 @@ class Special_button(pygame.sprite.Sprite):
         input_rect = input_display.get_rect(centery=input_y + input_height // 2, left=input_x + 20)
         dialog_surface.blit(input_display, input_rect)
         
-        # Message d'erreur si incorrect
         if self.error_message and time.time() - self.error_time < 2:
             error_font = pygame.font.SysFont('Arial', 14)
             error_text = error_font.render(self.error_message, True, (255, 100, 100))
@@ -322,14 +284,12 @@ class Special_button(pygame.sprite.Sprite):
             error_rect = error_text.get_rect(centerx=box_width // 2, top=input_y + input_height + 15)
             dialog_surface.blit(error_text, error_rect)
         
-        # Instructions
         hint_font = pygame.font.SysFont('Arial', 13)
         hint_text = hint_font.render("Press ENTER to confirm (cannot be cancelled)", True, (150, 80, 80))
         hint_text.set_alpha(int(self.fade_alpha * 0.8))
         hint_rect = hint_text.get_rect(centerx=box_width // 2, bottom=box_height - 20)
         dialog_surface.blit(hint_text, hint_rect)
         
-        # Blit de la boîte de dialogue sur l'écran
         screen.blit(dialog_surface, (box_x, box_y))
     
     def _draw_modern_password_input(self, screen):
