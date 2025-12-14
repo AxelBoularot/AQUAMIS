@@ -148,11 +148,10 @@ class App():
         # Menu Bar
         menu_items = [
             ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data), ("Exit", self.action_exit)]),
-            ("Start", self.action_start),
-            ("Stop", self.action_stop),
-            ("Emergency Stop", self.action_emergency_stop),
+            ("Start", self.action_start, (0, 150, 0)),  # Green color
+            ("Stop", self.action_emergency_stop, (150, 0, 0)),  # Dark red color
             ("View", [("Toggle Fullscreen", self.action_toggle_fullscreen)]),
-            ("Tools", [("Restart Stream", lambda: None)]),
+            ("Tools", [("Restart Stream", lambda: None)]),  # Blue color
             ("Help", [("About", self.action_about)])
         ]
         self.menu_bar = MenuBar(self.font15, menu_items)

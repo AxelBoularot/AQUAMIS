@@ -10,7 +10,15 @@ SHADOW_COLOR = (0, 0, 0, 100)
 class MenuBar:
     def __init__(self, font, items):
         self.font = font
-        self.items = items
+        # Support for items with optional colors: ("Label", submenu) or ("Label", submenu, color)
+        self.items = []
+        for item in items:
+            if len(item) == 2:
+                # No color specified, use default
+                self.items.append((item[0], item[1], None))
+            else:
+                # Color specified
+                self.items.append((item[0], item[1], item[2]))
         
         self.padding_x = 16
         self.padding_y = 8
@@ -36,6 +44,16 @@ class MenuBar:
             self._text_cache[text] = self.font.render(text, True, TEXT_COLOR)
         return self._text_cache[text]
 
+    def _get_lighter_color(self, color):
+        """Return a lighter version of the color for hover state."""
+        r, g, b = color[:3]
+        return (min(255, r + 20), min(255, g + 20), min(255, b + 20))
+
+    def _get_darker_color(self, color):
+        """Return a darker version of the color for active state."""
+        r, g, b = color[:3]
+        return (max(0, r - 20), max(0, g - 20), max(0, b - 20))
+
     def _build_layout(self):
         rects = []
         current_x = self.bar_margin_left + self.padding_x
@@ -46,12 +64,12 @@ class MenuBar:
 
         self.menu_height = self.bar_margin_top + self.bar_height + 10
 
-        for label, submenu in self.items:
+        for label, submenu, color in self.items:
             surf = self._get_text_surf(label)
             item_width = surf.get_width() + self.padding_x * 2
             
             rect = pygame.Rect(current_x, self.bar_margin_top, item_width, item_height)
-            rects.append((label, rect, submenu))
+            rects.append((label, rect, submenu, color))
             
             current_x += item_width + self.item_spacing
             
@@ -62,13 +80,13 @@ class MenuBar:
         self.hover_index = None
         self.hover_sub_index = None
         
-        for i, (_, rect, _) in enumerate(self.item_rects):
+        for i, (_, rect, _, _) in enumerate(self.item_rects):
             if rect.collidepoint(mouse_pos):
                 self.hover_index = i
                 break
         
         if self.open_index is not None:
-            _, parent_rect, submenu = self.item_rects[self.open_index]
+            _, parent_rect, submenu, _ = self.item_rects[self.open_index]
             if isinstance(submenu, list):
                 dropdown_rect, item_height, _ = self._calculate_dropdown_geometry(parent_rect, submenu)
                 if dropdown_rect.collidepoint(mouse_pos):
@@ -118,12 +136,25 @@ class MenuBar:
         pygame.draw.rect(surface, BORDER_COLOR, bar_bg_rect, width=1, border_radius=8)
 
         # 2. Éléments
-        for i, (label, rect, submenu) in enumerate(self.item_rects):
+        for i, (label, rect, submenu, item_color) in enumerate(self.item_rects):
             is_hovered = (i == self.hover_index)
             is_open = (i == self.open_index)
             
-            if is_hovered or is_open:
+            # Use custom color if specified, otherwise use default colors
+            if item_color is not None:
+                if is_open:
+                    color = self._get_darker_color(item_color)
+                elif is_hovered:
+                    color = self._get_lighter_color(item_color)
+                else:
+                    color = item_color
+            else:
+                # Default behavior
                 color = ACTIVE_COLOR if is_open else HOVER_COLOR
+                if not (is_hovered or is_open):
+                    color = BG_COLOR  # No background for default items
+            
+            if is_hovered or is_open or item_color is not None:
                 bg_rect = rect.inflate(-4, -4)
                 pygame.draw.rect(surface, color, bg_rect, border_radius=6)
 
@@ -135,7 +166,7 @@ class MenuBar:
         """Dessine UNIQUEMENT le menu déroulant (à appeler APRÈS l'interface)."""
         if surface is None or self.open_index is None: return
 
-        _, parent_rect, submenu = self.item_rects[self.open_index]
+        _, parent_rect, submenu, _ = self.item_rects[self.open_index]
         if not isinstance(submenu, list): return
 
         dropdown_rect, item_height, menu_width = self._calculate_dropdown_geometry(parent_rect, submenu, surface.get_height())
@@ -170,7 +201,7 @@ class MenuBar:
         """Gère les clics."""
         # 1. Clic dans le menu déroulant
         if self.open_index is not None:
-            _, parent_rect, submenu = self.item_rects[self.open_index]
+            _, parent_rect, submenu, _ = self.item_rects[self.open_index]
             # Check if submenu is a list (dropdown) or callable (direct action)
             if isinstance(submenu, list):
                 dropdown_rect, item_height, _ = self._calculate_dropdown_geometry(parent_rect, submenu)
@@ -186,7 +217,7 @@ class MenuBar:
         
         # 2. Clic sur la barre
         clicked_on_bar = False
-        for i, (_, rect, submenu) in enumerate(self.item_rects):
+        for i, (_, rect, submenu, _) in enumerate(self.item_rects):
             if rect.collidepoint(mouse_pos):
                 clicked_on_bar = True
                 
