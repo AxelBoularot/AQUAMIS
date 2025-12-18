@@ -16,7 +16,7 @@ class SocketClient:
         self.running = True
 
     def connect(self):
-        # Création et configuration des sockets
+                                               
         self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -55,7 +55,7 @@ class VideoReceiver(threading.Thread):
 
     def receive_frame(self):
         try:
-            # Réception de la taille
+                                    
             size_data = self.socket_client.video_socket.recv(4)
             if not size_data:
                 return None
@@ -63,7 +63,7 @@ class VideoReceiver(threading.Thread):
             if size == 0:
                 return None
 
-            # Réception des données
+                                   
             data = b''
             while len(data) < size:
                 packet = self.socket_client.video_socket.recv(size - len(data))
@@ -71,7 +71,7 @@ class VideoReceiver(threading.Thread):
                     return None
                 data += packet
 
-            # Décodage de l'image
+                                 
             img_array = np.frombuffer(data, dtype=np.uint8)
             frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             return frame
@@ -90,12 +90,12 @@ class DataHandler(threading.Thread):
     def run(self):
         while self.running and self.socket_client.running:
             try:
-                # Envoi du message
+                                  
                 msg_json = json.dumps(self.message_to_send).encode('utf-8')
                 size = len(msg_json).to_bytes(4, byteorder='big')
                 self.socket_client.data_socket.sendall(size + msg_json)
 
-                # Réception de la réponse
+                                         
                 size_data = self.socket_client.data_socket.recv(4)
                 if not size_data:
                     continue
@@ -126,7 +126,7 @@ class StreamClient:
             if not self.socket_client.running:
                 print("Impossible de se connecter au serveur")
 
-            # Initialisation de Pygame
+                                      
             pygame.init()
             window_size = (800, 600)
             screen = pygame.display.set_mode(window_size)
@@ -138,7 +138,7 @@ class StreamClient:
             input_box = pygame.Rect(10, window_size[1]-30, 140, 24)
             input_text = ''
 
-            # Démarrage des threads si connecté
+                                               
             if self.socket_client.running:
                 self.video_receiver = VideoReceiver(self.socket_client)
                 self.data_handler = DataHandler(self.socket_client)
@@ -146,7 +146,7 @@ class StreamClient:
                 self.data_handler.start()
                 self.video_receiver.start()
 
-            # Boucle principale
+                               
             while self.running:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
@@ -168,7 +168,7 @@ class StreamClient:
 
                 screen.fill((0,0,0))
 
-                # Affichage de la vidéo
+                                       
                 if self.video_receiver and self.video_receiver.frame is not None:
                     with self.video_receiver.frame_lock:
                         frame = self.video_receiver.frame.copy()
@@ -178,14 +178,14 @@ class StreamClient:
                         frame = pygame.surfarray.make_surface(frame)
                         screen.blit(frame, (0,0))
 
-                # Affichage des données reçues
+                                              
                 if self.data_handler:
                     with self.data_handler.data_lock:
                         data_text = str(self.data_handler.received_data)
                     data_surface = font.render(f'Données reçues: {data_text}', True, (255, 255, 255))
                     screen.blit(data_surface, (10, window_size[1]-60))
 
-                # Affichage de la zone de saisie
+                                                
                 txt_surface = font.render(input_text, True, (255, 255, 255))
                 width = max(200, txt_surface.get_width()+10)
                 input_box.w = width

@@ -86,7 +86,7 @@ class DataHandler(threading.Thread):
     def run(self):
         while self.running and self.socket_client.running:
             try:
-                # Envoi du message
+                                  
                 msg_json = json.dumps(self.message_to_send).encode('utf-8')
                 size = len(msg_json).to_bytes(4, byteorder='big')
                 msg_json = json.dumps(self.message_to_send).encode('utf-8')

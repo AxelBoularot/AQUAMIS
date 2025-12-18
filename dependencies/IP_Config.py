@@ -94,7 +94,7 @@ def ip_modal_handle_event(event):
     return False
 
 def ip_modal_draw(surface):
-    """Draw the IP modal over `surface` and auto-close on success."""
+                                                                     
     state = globals().get('IP_MODAL')
     if not state:
         return
@@ -150,19 +150,11 @@ def ip_modal_draw(surface):
         del globals()['IP_MODAL']
 
 def open_excel_table_console(matrix):
-    """
-    Demande via la console :
-    - Le nombre de lignes et de colonnes du tableau Excel.
-    - Les valeurs de chaque ligne (les valeurs doivent être séparées par un espace).
+       
     
-    Puis utilise Tkinter pour ouvrir une boîte de dialogue permettant de choisir
-    l'emplacement et le nom du fichier Excel. Le tableau est ensuite sauvegardé
-    grâce à pandas.
-    """
-    
-    # Utiliser Tkinter pour choisir le chemin d'enregistrement du fichier Excel
+                                                                               
     root = tk.Tk()
-    root.withdraw()  # Masquer la fenêtre principale Tkinter
+    root.withdraw()                                         
     file_path = filedialog.asksaveasfilename(
         title="Enregistrer le tableau Excel",
         defaultextension=".xlsx",

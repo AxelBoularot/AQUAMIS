@@ -1,7 +1,7 @@
 import pygame
 from datetime import datetime
 
-# Color definitions
+                   
 WHITE = (240, 240, 240)
 BLUE = (100, 149, 237)
 YELLOW = (255, 215, 0)
@@ -108,21 +108,21 @@ class LogSystem:
         viewport_rect = pygame.Rect(x, y, width, height)
         current_pos = mouse_pos if mouse_pos else pygame.mouse.get_pos()
         
-        # 1. Background
+                       
         pygame.draw.rect(surface, BG_COLOR, viewport_rect, border_radius=8)
         pygame.draw.rect(surface, (60, 60, 60), viewport_rect, 1, border_radius=8)
         
-        # 2. Content Clipping
-        # Create a subsurface or use clipping
+                             
+                                             
         old_clip = surface.get_clip()
-        surface.set_clip(viewport_rect.inflate(-4, -4)) # Padding
+        surface.set_clip(viewport_rect.inflate(-4, -4))          
         
         start_y = y + self.padding - self.scroll_y
         
         for i, (timestamp, message, color) in enumerate(self.logs):
             line_y = start_y + (i * self.line_height)
             
-            # Optimization: Only draw visible lines
+                                                   
             if line_y + self.line_height < y or line_y > y + height:
                 continue
                 
@@ -132,17 +132,17 @@ class LogSystem:
             
         surface.set_clip(old_clip)
         
-        # 3. Scrollbar
+                      
         thumb_rect = self._get_scrollbar_rect(viewport_rect)
         if thumb_rect:
-            # Track
+                   
             track_rect = pygame.Rect(viewport_rect.right - 14, viewport_rect.y + 2, 12, height - 4)
             pygame.draw.rect(surface, SCROLLBAR_BG, track_rect, border_radius=6)
             
-            # Thumb
+                   
             color = SCROLLBAR_THUMB_HOVER if self.is_dragging or thumb_rect.collidepoint(current_pos) else SCROLLBAR_THUMB
             pygame.draw.rect(surface, color, thumb_rect, border_radius=4)
 
-        # Title (Floating on top)
-        # title_surf = self.font.render("System Logs", True, (150, 150, 150))
-        # surface.blit(title_surf, (x + 10, y - 25))
+                                 
+                                                                             
+                                                    
