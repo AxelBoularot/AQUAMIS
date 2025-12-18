@@ -726,6 +726,7 @@ class App():
                 self.window_system.draw_minimize_button(self.virtual_screen, self.status_window, mouse_pos_virtual)
 
             def _draw_camera():
+                global device, model
                 if self.window_system.is_minimized("Camera"):
                     return
                 camera_rect = self.camera_window.rect
@@ -734,17 +735,80 @@ class App():
                 if frame is not None:
                     try:
                         frame_bgr = np.ascontiguousarray(frame)
-                        if self.ai_options.enabled:
-                            results = model.track(frame_bgr, persist=bool(self.ai_options.tracking), verbose=False)
-                            annotated_frame = results[0].plot() if results else frame_bgr
-                        else:
-                            annotated_frame = frame_bgr
+                        annotated_frame = frame_bgr
+                        if self.ai_options.enabled and model is not None:
+                            try:
+                                results = model.track(
+                                    frame_bgr,
+                                    persist=bool(self.ai_options.tracking),
+                                    verbose=False,
+                                    device=device,
+                                )
+                                annotated_frame = results[0].plot() if results else frame_bgr
+                            except Exception as e:
+                                msg = str(e)
+                                if (
+                                    device != "cpu"
+                                    and (
+                                        "no kernel image is available for execution on the device" in msg
+                                        or "cudaErrorNoKernelImageForDevice" in msg
+                                    )
+                                ):
+                                    device = "cpu"
+                                    try:
+                                        model = model.to("cpu")
+                                    except Exception:
+                                        pass
+                                    if hasattr(self, "log_system"):
+                                        self.log_system.add_log(
+                                            "CUDA non disponible/incompatible; YOLO passe en CPU",
+                                            "warning",
+                                        )
+                                    print("CUDA not usable; switched YOLO to CPU.")
+
+                                    results = model.track(
+                                        frame_bgr,
+                                        persist=bool(self.ai_options.tracking),
+                                        verbose=False,
+                                        device=device,
+                                    )
+                                    annotated_frame = results[0].plot() if results else frame_bgr
+                                else:
+                                    raise
                         frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                         frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
                         frame_surface = pygame.transform.scale(frame_surface, (camera_rect.w - 4, camera_rect.h - 4))
                         frame_rect = frame_surface.get_rect(center=camera_rect.center)
                         self.virtual_screen.blit(frame_surface, frame_rect)
                     except Exception as e:
+                        msg = str(e)
+                        if (
+                            device != "cpu"
+                            and (
+                                "no kernel image is available for execution on the device" in msg
+                                or "cudaErrorNoKernelImageForDevice" in msg
+                            )
+                        ):
+                            if not hasattr(self, "_yolo_cpu_fallback_done"):
+                                self._yolo_cpu_fallback_done = False
+
+                            device = "cpu"
+                            try:
+                                if model is not None:
+                                    model = model.to("cpu")
+                            except Exception:
+                                pass
+
+                            if not self._yolo_cpu_fallback_done:
+                                self._yolo_cpu_fallback_done = True
+                                if hasattr(self, "log_system"):
+                                    self.log_system.add_log(
+                                        "CUDA non compatible; YOLO forcé en CPU",
+                                        "warning",
+                                    )
+                                print("CUDA not compatible; forcing YOLO to CPU.")
+                            return
+
                         print(f"Video Error: {e}")
 
                 self.cube.rect.center = (camera_rect.x + 610, camera_rect.y + 90)
@@ -894,7 +958,6 @@ def run():
     show_start_screen(starting_font_button=starting_font_button, logo=logo, starting_screen=starting_screen)
     app = App()
     app.main()
-
 
 if __name__ == '__main__':
     run()
