@@ -119,15 +119,26 @@ class Dashboard:
 
     def draw_signal(self, surface, mouse_pos=None):
         rect = self._signal_rect_override or self.signal_rect
+        scale = max(0.6, min(2.0, min(rect.w / 370, rect.h / 110)))
         pygame.draw.rect(surface, DARK_GRAY, rect, border_radius=8)
         pygame.draw.rect(surface, BORDER_GRAY, rect, 1, border_radius=8)
 
         pad_x = max(10, rect.w // 18)
         pad_y = max(8, rect.h // 12)
         title_surf = self.font15.render("SIGNAL STRENGTH", True, WHITE)
+        if scale != 1.0:
+            title_surf = pygame.transform.smoothscale(
+                title_surf,
+                (max(1, int(title_surf.get_width() * scale)), max(1, int(title_surf.get_height() * scale))),
+            )
         surface.blit(title_surf, (rect.x + pad_x, rect.y + pad_y))
 
         pct_surf = self.font15.render(f"{int(self.signal_strength)}%", True, WHITE)
+        if scale != 1.0:
+            pct_surf = pygame.transform.smoothscale(
+                pct_surf,
+                (max(1, int(pct_surf.get_width() * scale)), max(1, int(pct_surf.get_height() * scale))),
+            )
         surface.blit(pct_surf, (rect.right - pct_surf.get_width() - pad_x, rect.y + pad_y))
 
         n = 5
@@ -146,15 +157,26 @@ class Dashboard:
 
     def draw_ballast(self, surface, mouse_pos=None):
         rect = self._ballast_rect_override or self.ballast_rect
+        scale = max(0.6, min(2.0, min(rect.w / 370, rect.h / 110)))
         pygame.draw.rect(surface, DARK_GRAY, rect, border_radius=8)
         pygame.draw.rect(surface, BORDER_GRAY, rect, 1, border_radius=8)
 
         pad_x = max(10, rect.w // 18)
         pad_y = max(8, rect.h // 12)
         title_surf = self.font15.render("BALLAST", True, WHITE)
+        if scale != 1.0:
+            title_surf = pygame.transform.smoothscale(
+                title_surf,
+                (max(1, int(title_surf.get_width() * scale)), max(1, int(title_surf.get_height() * scale))),
+            )
         surface.blit(title_surf, (rect.x + pad_x, rect.y + pad_y))
 
         pct_surf = self.font15.render(f"{int(self.ballast_level)}%", True, WHITE)
+        if scale != 1.0:
+            pct_surf = pygame.transform.smoothscale(
+                pct_surf,
+                (max(1, int(pct_surf.get_width() * scale)), max(1, int(pct_surf.get_height() * scale))),
+            )
         surface.blit(pct_surf, (rect.right - pct_surf.get_width() - pad_x, rect.y + pad_y))
 
         bar_y = rect.y + pad_y + title_surf.get_height() + max(6, rect.h // 10)
@@ -170,21 +192,33 @@ class Dashboard:
     def draw_speed(self, surface, mouse_pos=None):
         rect = self._speed_rect_override or self.speed_rect
         speed_switch_rect = self._speed_switch_rect_override or self.speed_switch_rect
+        scale = max(0.6, min(2.0, min(rect.w / 370, rect.h / 110)))
 
         pygame.draw.rect(surface, DARK_GRAY, rect, border_radius=8)
         pygame.draw.rect(surface, BORDER_GRAY, rect, 1, border_radius=8)
 
         pad_x = max(10, rect.w // 18)
         pad_y = max(8, rect.h // 12)
-        surface.blit(self.font15.render("SPEED", True, WHITE), (rect.x + pad_x, rect.y + pad_y))
+        title_surf = self.font15.render("SPEED", True, WHITE)
+        if scale != 1.0:
+            title_surf = pygame.transform.smoothscale(
+                title_surf,
+                (max(1, int(title_surf.get_width() * scale)), max(1, int(title_surf.get_height() * scale))),
+            )
+        surface.blit(title_surf, (rect.x + pad_x, rect.y + pad_y))
 
         display_speed = self.speed_value
         if self.speed_unit == "Km/h":
             display_speed *= 1.852
 
         speed_text = self.font.render(f"{display_speed:.1f}", True, YELLOW)
-        speed_text = pygame.transform.scale(speed_text, (int(speed_text.get_width() * 1.5), int(speed_text.get_height() * 1.5)))
-        surface.blit(speed_text, (rect.centerx - speed_text.get_width()//2, rect.centery - 25))
+        num_scale = 1.5 * scale
+        if num_scale != 1.0:
+            speed_text = pygame.transform.smoothscale(
+                speed_text,
+                (max(1, int(speed_text.get_width() * num_scale)), max(1, int(speed_text.get_height() * num_scale))),
+            )
+        surface.blit(speed_text, (rect.centerx - speed_text.get_width()//2, rect.centery - int(25 * scale)))
 
         is_hovered = mouse_pos and speed_switch_rect.collidepoint(mouse_pos)
         btn_color = BTN_HOVER_COLOR if is_hovered else BTN_BG_COLOR
@@ -194,4 +228,9 @@ class Dashboard:
             pygame.draw.rect(surface, BORDER_GRAY, speed_switch_rect, 1, border_radius=5)
 
         unit_text = self.font15.render(self.speed_unit, True, BTN_TEXT_COLOR)
+        if scale != 1.0:
+            unit_text = pygame.transform.smoothscale(
+                unit_text,
+                (max(1, int(unit_text.get_width() * scale)), max(1, int(unit_text.get_height() * scale))),
+            )
         surface.blit(unit_text, (speed_switch_rect.centerx - unit_text.get_width()//2, speed_switch_rect.centery - unit_text.get_height()//2))

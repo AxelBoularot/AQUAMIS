@@ -67,28 +67,18 @@ class DraggableWindow:
             dx = int(mouse_pos[0]) - int(self._resize_start_mouse[0])
             dy = int(mouse_pos[1]) - int(self._resize_start_mouse[1])
 
-            target_w = start_w + dx
-            target_h = start_h + dy
-
             min_w, min_h = self.min_size
-            min_scale = max(min_w / start_w, min_h / start_h, 0.01)
+            target_w = max(min_w, int(start_w + dx))
+            target_h = max(min_h, int(start_h + dy))
 
-            max_scale = None
             if bounds_rect is not None:
-                max_w = int(bounds_rect.right - self.rect.x)
-                max_h = int(bounds_rect.bottom - self.rect.y)
-                if max_w > 0 and max_h > 0:
-                    max_scale = min(max_w / start_w, max_h / start_h)
+                max_w = max(min_w, int(bounds_rect.right - self.rect.x))
+                max_h = max(min_h, int(bounds_rect.bottom - self.rect.y))
+                target_w = min(target_w, max_w)
+                target_h = min(target_h, max_h)
 
-            scale = max(target_w / start_w, target_h / start_h, min_scale)
-            if max_scale is not None:
-                scale = min(scale, max_scale)
-
-            new_w = max(1, int(round(start_w * scale)))
-            new_h = max(1, int(round(start_h * scale)))
-
-            self.rect.w = new_w
-            self.rect.h = new_h
+            self.rect.w = int(target_w)
+            self.rect.h = int(target_h)
             return True
 
         if event.type == pygame.MOUSEMOTION and self._dragging:

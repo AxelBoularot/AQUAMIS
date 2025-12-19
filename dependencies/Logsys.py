@@ -1,5 +1,10 @@
-import pygame
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
 from datetime import datetime
+
+import pygame
 
                    
 WHITE = (240, 240, 240)
@@ -11,11 +16,74 @@ SCROLLBAR_BG = (40, 40, 40)
 SCROLLBAR_THUMB = (80, 80, 80)
 SCROLLBAR_THUMB_HOVER = (100, 100, 100)
 
+
+@dataclass(frozen=True)
+class _LogEntry:
+    timestamp: str
+    message: str
+    color: tuple[int, int, int]
+    levelno: int
+
+
+def _parse_level(level: int | str) -> int:
+    if isinstance(level, int):
+        return int(level)
+    s = str(level).strip()
+    if not s:
+        return logging.INFO
+
+    name = s.upper()
+    if name in ("WARN",):
+        name = "WARNING"
+
+    if name in logging._nameToLevel:
+        return int(logging._nameToLevel[name])
+
+    legacy = s.lower()
+    if legacy == "info":
+        return logging.INFO
+    if legacy == "warning":
+        return logging.WARNING
+    if legacy == "error":
+        return logging.ERROR
+    if legacy == "debug":
+        return logging.DEBUG
+    if legacy == "critical":
+        return logging.CRITICAL
+
+    return logging.INFO
+
+
+def _level_color(levelno: int) -> tuple[int, int, int]:
+    if levelno >= logging.ERROR:
+        return RED
+    if levelno >= logging.WARNING:
+        return YELLOW
+    if levelno >= logging.INFO:
+        return BLUE
+    return WHITE
+
+
+class UILogHandler(logging.Handler):
+    def __init__(self, log_system: "LogSystem"):
+        super().__init__(level=logging.DEBUG)
+        self._log_system = log_system
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            ts = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+            self._log_system.add_record(int(record.levelno), msg, timestamp=ts)
+        except Exception:
+            self.handleError(record)
+
 class LogSystem:
     def __init__(self, font, max_logs=100):
         self.font = font
         self.max_logs = max_logs
-        self.logs = []
+        self.logs: list[_LogEntry] = []
+
+        self.min_level = logging.INFO
         
         self.scroll_y = 0
         self.max_scroll = 0
@@ -32,23 +100,37 @@ class LogSystem:
         self.surface_cache = None
         self.needs_redraw = True
 
+    def set_min_level(self, level: int | str) -> None:
+        self.min_level = _parse_level(level)
+        self.needs_redraw = True
+        self._recalculate_layout()
+        self.scroll_y = max(0, min(self.scroll_y, self.max_scroll))
+
+    def get_min_level_name(self) -> str:
+        return logging.getLevelName(self.min_level)
+
     def add_log(self, message, level="info"):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        if level == "info": color = BLUE
-        elif level == "warning": color = YELLOW
-        elif level == "error": color = RED
-        else: color = WHITE
-        
-        self.logs.append((timestamp, message, color))
+        levelno = _parse_level(level)
+        self.add_record(levelno, str(message))
+
+    def add_record(self, levelno: int, message: str, *, timestamp: str | None = None) -> None:
+        ts = timestamp or datetime.now().strftime("%H:%M:%S")
+        color = _level_color(levelno)
+        self.logs.append(_LogEntry(ts, message, color, levelno))
         if len(self.logs) > self.max_logs:
             self.logs.pop(0)
-            
+
         self.needs_redraw = True
         self._recalculate_layout()
         self.scroll_y = self.max_scroll
 
+    def _filtered_logs(self) -> list[_LogEntry]:
+        if self.min_level <= logging.DEBUG:
+            return self.logs
+        return [e for e in self.logs if e.levelno >= self.min_level]
+
     def _recalculate_layout(self):
-        self.content_height = len(self.logs) * self.line_height + self.padding * 2
+        self.content_height = len(self._filtered_logs()) * self.line_height + self.padding * 2
         if self.viewport_height > 0:
             self.max_scroll = max(0, self.content_height - self.viewport_height)
         else:
@@ -118,16 +200,17 @@ class LogSystem:
         surface.set_clip(viewport_rect.inflate(-4, -4))          
         
         start_y = y + self.padding - self.scroll_y
-        
-        for i, (timestamp, message, color) in enumerate(self.logs):
+
+        logs_to_draw = self._filtered_logs()
+        for i, entry in enumerate(logs_to_draw):
             line_y = start_y + (i * self.line_height)
             
                                                    
             if line_y + self.line_height < y or line_y > y + height:
                 continue
                 
-            text = f"[{timestamp}] {message}"
-            text_surf = self.font.render(text, True, color)
+            text = f"[{entry.timestamp}] {entry.message}"
+            text_surf = self.font.render(text, True, entry.color)
             surface.blit(text_surf, (x + 10, line_y))
             
         surface.set_clip(old_clip)
