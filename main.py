@@ -469,9 +469,14 @@ class App():
             elif self.data_handler:
                  with self.data_handler.data_lock:
                     data = self.data_handler.received_data
-                    current_speed = data.get("Speed", 0.0)
-                    current_ballast = data.get("Ballast", 0)
-                    current_signal = data.get("Signal", 0)
+                    if data is not None:
+                        current_speed = data.get("Speed", 0.0)
+                        current_ballast = data.get("Ballast", 0)
+                        current_signal = data.get("Signal", 0)
+                    else:
+                        current_speed = 0.0
+                        current_ballast = 0
+                        current_signal = 0
 
             self.dashboard.update_data(speed=current_speed, ballast=current_ballast, signal=current_signal)
             
@@ -588,7 +593,9 @@ class App():
                 fade.fill(BLACK)
                 fade.set_alpha(self.fade_in_alpha)
                 self.screen.blit(fade, (0,0))
-
+            self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
+            self.data_handler.message_to_send = self.envoie
+            
             pygame.display.flip()
             self.clock.tick(60)
 

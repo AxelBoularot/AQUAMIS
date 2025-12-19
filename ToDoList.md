@@ -41,3 +41,5 @@ o Possibilité de télécharger la vidéo du test avec toutes les télémétries
 signal)
 o Fourniture d’un Planning détaillé des activités (enchainement des tâches, priorisation,
 identification du chemin critique,..)
+
+Faire un système de notification dans l'interface

@@ -81,7 +81,8 @@ class StreamServer:
     
     def envoyer_json(self, data):
         json_str = json.dumps(data) + "\n"
-        ser.write(json_str.encode('utf-8'))
+        if ser != None:
+            ser.write(json_str.encode('utf-8'))
 
     def lire_json(self):
         try:
@@ -101,15 +102,16 @@ class StreamServer:
                 data = self.socket_manager.data_client.recv(size).decode('utf-8')
                 message = json.loads(data)
                 print(f"Reçu: {message}")
-                self.envoyer_json(message)
+                self.envoyer_json(message) #Envoie de la donnée à l'arduino
                 
                 # Traitement et réponse
                 response = self.lire_json()
                 response_json = json.dumps(response).encode('utf-8')
                 size_bytes = len(response_json).to_bytes(4, byteorder='big')
                 self.socket_manager.data_client.send(size_bytes + response_json)
-            except:
-                break
+            except Exception as error:
+                print(error)
+                pass
                 
     def send_frame(self, frame):
         try:

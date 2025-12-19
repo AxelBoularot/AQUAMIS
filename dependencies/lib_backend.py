@@ -86,19 +86,50 @@ class DataHandler(threading.Thread):
     def run(self):
         while self.running and self.socket_client.running:
             try:
-                # Envoi du message
-                msg_json = json.dumps(self.message_to_send).encode('utf-8')
-                size = len(msg_json).to_bytes(4, byteorder='big')
                 msg_json = json.dumps(self.message_to_send).encode('utf-8')
                 size = len(msg_json).to_bytes(4, byteorder='big')
                 self.socket_client.data_socket.sendall(size + msg_json)
 
+                # Receive the response size header with timeout
+                self.socket_client.data_socket.settimeout(5.0)  # 5-second timeout
+                size_data = self.socket_client.data_socket.recv(4)
+                if not size_data:
+                    print("No size data received, skipping...")
+                    with self.data_lock:
+                        self.received_data = {"error": "No response from server"}
+                    continue
                 size = int.from_bytes(size_data, byteorder='big')
-                data = self.socket_client.data_socket.recv(size).decode('utf-8')
+                if size == 0:
+                    print("Empty response, skipping...")
+                    with self.data_lock:
+                        self.received_data = {"error": "Empty response"}
+                    continue
+
+                # Receive the actual data
+                data = b''
+                while len(data) < size:
+                    packet = self.socket_client.data_socket.recv(size - len(data))
+                    if not packet:
+                        break
+                    data += packet
+                data = data.decode('utf-8')
                 response = json.loads(data)
                 with self.data_lock:
                     self.received_data = response
+
+                # After receiving client's message
+                response_data = {"Speed": 5.0, "Ballast": 50, "Signal": 80}  # Example telemetry
+                response_json = json.dumps(response_data).encode('utf-8')
+                size = len(response_json).to_bytes(4, byteorder='big')
+                self.socket_client.data_socket.sendall(size + response_json)
+
+            except socket.timeout:
+                print("Socket timeout, no data received.")
+                with self.data_lock:
+                    self.received_data = {"error": "Timeout"}
             except Exception as e:
+                print(f"DataHandler error: {e}")
                 with self.data_lock:
                     self.received_data = {"error": str(e)}
-                continue
+            finally:
+                self.socket_client.data_socket.settimeout(None)  # Reset timeout
