@@ -1032,7 +1032,6 @@ class App():
                 },
             )
 
-            available_h = current_size[1] - menu_height
             scale, x_offset, y_offset, new_w, new_h = compute_transform_with_menu(
                 self.screen,
                 menu_height,
