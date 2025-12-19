@@ -661,30 +661,17 @@ class App():
                 data=data_for_telemetry,
             )
 
-<<<<<<< HEAD
                 # 3. Ballast (Fixed as requested)
                 # User indicated we can't know this value in this mode, so we keep it fixed.
-                current_ballast = 50
 
-            elif self.data_handler:
-                 with self.data_handler.data_lock:
-                    data = self.data_handler.received_data
-                    if data is not None:
-                        current_speed = data.get("Speed", 0.0)
-                        current_ballast = data.get("Ballast", 0)
-                        current_signal = data.get("Signal", 0)
-                    else:
-                        current_speed = 0.0
-                        current_ballast = 0
-                        current_signal = 0
-=======
+
             current_speed = snap.speed
             current_ballast = snap.ballast
             current_signal = snap.signal
             current_pressure = snap.pressure_bar
             current_depth = snap.depth_m
             current_temp = snap.elec_temp_c
->>>>>>> f6a16887906d33c57e431bf09ecbe208e367941e
+
 
             self.dashboard.update_data(speed=current_speed, ballast=current_ballast, signal=current_signal)
             for button in self.all_buttons:
@@ -1072,7 +1059,9 @@ class App():
                 fade.set_alpha(self.fade_in_alpha)
                 self.screen.blit(fade, (0,0))
             self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
-            self.data_handler.message_to_send = self.envoie
+            try:
+                self.data_handler.message_to_send = self.envoie
+            except: pass
             
             pygame.display.flip()
             self.clock.tick(60)

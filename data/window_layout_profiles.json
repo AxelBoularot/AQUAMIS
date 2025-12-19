@@ -1,0 +1,151 @@
+{
+  "profiles": {
+    "Axel": {
+      "windows": {
+        "Camera": {
+          "rect": [
+            390,
+            10,
+            720,
+            480
+          ],
+          "min": false
+        },
+        "Graphs": {
+          "rect": [
+            1120,
+            10,
+            370,
+            420
+          ],
+          "min": false
+        },
+        "Status": {
+          "rect": [
+            1120,
+            500,
+            370,
+            245
+          ],
+          "min": false
+        },
+        "Logs": {
+          "rect": [
+            10,
+            100,
+            370,
+            200
+          ],
+          "min": false
+        },
+        "Signal": {
+          "rect": [
+            10,
+            310,
+            370,
+            110
+          ],
+          "min": true
+        },
+        "Ballast": {
+          "rect": [
+            10,
+            425,
+            370,
+            110
+          ],
+          "min": true
+        },
+        "Speed": {
+          "rect": [
+            0,
+            423,
+            370,
+            110
+          ],
+          "min": true
+        },
+        "Battery": {
+          "rect": [
+            10,
+            655,
+            370,
+            90
+          ],
+          "min": true
+        },
+        "PressureDepth": {
+          "rect": [
+            390,
+            500,
+            160,
+            160
+          ],
+          "min": false
+        },
+        "Temp": {
+          "rect": [
+            560,
+            500,
+            160,
+            160
+          ],
+          "min": false
+        },
+        "Thrusters": {
+          "rect": [
+            730,
+            500,
+            380,
+            120
+          ],
+          "min": false
+        },
+        "Power": {
+          "rect": [
+            0,
+            320,
+            380,
+            120
+          ],
+          "min": false
+        },
+        "CameraControls": {
+          "rect": [
+            1120,
+            10,
+            370,
+            110
+          ],
+          "min": true
+        },
+        "AIOptions": {
+          "rect": [
+            1120,
+            130,
+            370,
+            120
+          ],
+          "min": true
+        }
+      },
+      "z_order": [
+        "Camera",
+        "Graphs",
+        "Status",
+        "Logs",
+        "PressureDepth",
+        "Temp",
+        "CameraControls",
+        "AIOptions",
+        "Thrusters",
+        "Signal",
+        "Ballast",
+        "Speed",
+        "Battery",
+        "Power"
+      ]
+    }
+  },
+  "last_profile": "Axel"
+}
