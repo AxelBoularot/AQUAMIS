@@ -24,6 +24,14 @@ from dependencies.CommunicationBox import CommunicationBox
 from dependencies.Variable import WHITE, BLUE, RED, BASE_WIDTH, BASE_HEIGHT, GREEN, BLACK, BCP, GRAY, YELLOW
 from dependencies.Loading_Screen import show_loading_screen
 from dependencies.IP_Config import load_ip, ip_modal_handle_event, ip_modal_draw, open_excel_table_console, open_tk_window
+from dependencies.WindowLayoutProfiles import (
+    list_profiles as list_layout_profiles,
+    load_profile as load_layout_profile,
+    save_profile as save_layout_profile,
+    get_last_profile_name as get_last_layout_profile_name,
+    set_last_profile_name as set_last_layout_profile_name,
+    normalize_profile_name,
+)
 import dependencies.start_sreen as start_screen_module
 from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
 from dependencies.Logsys import LogSystem
@@ -87,15 +95,15 @@ class App():
 
         self.dashboard = Dashboard(self.font, self.font15, self.font18)
 
-        menu_items = [
+        self._base_menu_items = [
             ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data), ("Exit", self.action_exit)]),
-            ("Start", self.action_start, (0, 150, 0)),               
-            ("Stop", self.action_emergency_stop, (150, 0, 0)),                  
-            ("View", [("Toggle Fullscreen", self.action_toggle_fullscreen), ("Reset Layout", self.action_reset_layout)]),
-            ("Tools", [("Restart Stream", lambda: None)]),              
-            ("Help", [("About", self.action_about)])
+            ("Start", self.action_start, (0, 150, 0)),
+            ("Stop", self.action_emergency_stop, (150, 0, 0)),
+            ("Views", []),
+            ("Tools", [("Restart Stream", lambda: None)]),
+            ("Help", [("About", self.action_about)]),
         ]
-        self.menu_bar = MenuBar(self.font15, menu_items)
+        self.menu_bar = MenuBar(self.font15, self._base_menu_items)
 
         self.camera_window = DraggableWindow(pygame.Rect(390, 10, 720, 480))
         self.right_graph_window = DraggableWindow(pygame.Rect(1120, 10, 370, 420))
@@ -127,11 +135,11 @@ class App():
         self.window_system.add_window("Speed", self.speed_window, kind="status")
         self.window_system.add_window("Battery", self.battery_window, kind="status")
 
-        self.window_system.add_window("PressureDepth", self.pressure_depth_window, kind="generic", start_minimized=True)
-        self.window_system.add_window("Temp", self.temp_window, kind="generic", start_minimized=True)
+        self.window_system.add_window("PressureDepth", self.pressure_depth_window, kind="generic")
+        self.window_system.add_window("Temp", self.temp_window, kind="generic")
 
-        self.window_system.add_window("Thrusters", self.thrusters_window, kind="generic", start_minimized=True)
-        self.window_system.add_window("Power", self.power_window, kind="generic", start_minimized=True)
+        self.window_system.add_window("Thrusters", self.thrusters_window, kind="generic")
+        self.window_system.add_window("Power", self.power_window, kind="generic")
         self.window_system.add_window("CameraControls", self.camera_controls_window, kind="generic", start_minimized=True)
         self.window_system.add_window("AIOptions", self.ai_options_window, kind="generic", start_minimized=True)
 
@@ -200,6 +208,8 @@ class App():
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
         self.button_emergency_stop = Special_button(20, 510, 350, 110, 'EMERGENCY STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.button_action, "EMERGENCY STOP HAS BEEN TRIGGERED")
+
+        self.layout_profile_prompt = Special_button(0, 0, 1, 1, '', self.font, WHITE, (0, 0, 0), (0, 0, 0), starting_screen)
         self.switch_com = Button(20, 400, 350, 80, 'SWITCH COM', self.font, WHITE, self.button_color, self.button_action, BCP, "Comms have been switched!")
 
         self.all_buttons = []
@@ -219,6 +229,9 @@ class App():
         self.window_system.set_default_layout("Power", (730, 630, 380, 120))
         self.window_system.set_default_layout("CameraControls", (1120, 10, 370, 110))
         self.window_system.set_default_layout("AIOptions", (1120, 130, 370, 120))
+
+        self._refresh_view_menu()
+        self._try_apply_last_layout_profile()
 
         self.all_sprites = pygame.sprite.Group()
         self.all_sprites.add(
@@ -347,6 +360,111 @@ class App():
     def action_reset_layout(self):
         self.window_system.reset_layout()
 
+    def _layout_snapshot(self) -> dict:
+        windows = {}
+        for key, meta in self.window_system.windows.items():
+            win = meta.get("win")
+            if win is None:
+                continue
+            r = win.rect
+            windows[key] = {
+                "rect": [int(r.x), int(r.y), int(r.w), int(r.h)],
+                "min": bool(meta.get("min", False)),
+            }
+        return {
+            "windows": windows,
+            "z_order": list(self.window_system.z_order),
+        }
+
+    def _apply_layout_snapshot(self, snapshot: dict) -> None:
+        if not isinstance(snapshot, dict):
+            return
+        wins = snapshot.get("windows")
+        if isinstance(wins, dict):
+            for key, payload in wins.items():
+                if key not in self.window_system.windows or not isinstance(payload, dict):
+                    continue
+                rect = payload.get("rect")
+                if isinstance(rect, list) and len(rect) == 4:
+                    try:
+                        x, y, w, h = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+                        self.window_system.windows[key]["win"].rect.update(x, y, w, h)
+                    except Exception:
+                        pass
+                if "min" in payload:
+                    self.window_system.windows[key]["min"] = bool(payload.get("min"))
+
+        z = snapshot.get("z_order")
+        if isinstance(z, list) and z:
+            existing = [k for k in z if isinstance(k, str) and k in self.window_system.windows]
+            for k in list(self.window_system.z_order):
+                if k in self.window_system.windows and k not in existing:
+                    existing.append(k)
+            if existing:
+                self.window_system.z_order = existing
+
+    def _refresh_view_menu(self) -> None:
+        view_sub = [
+            ("Toggle Fullscreen", self.action_toggle_fullscreen),
+            ("Reset Layout", self.action_reset_layout),
+            ("Save Layout As...", self.action_save_layout_as),
+        ]
+
+        profiles = list_layout_profiles()
+        if profiles:
+            for name in profiles:
+                view_sub.append((f"Load Layout: {name}", lambda n=name: self.action_load_layout_profile(n)))
+
+        items = []
+        for label, submenu_or_action, *rest in self._base_menu_items:
+            if label == "Views":
+                if rest:
+                    items.append((label, view_sub, rest[0]))
+                else:
+                    items.append((label, view_sub))
+            else:
+                if rest:
+                    items.append((label, submenu_or_action, rest[0]))
+                else:
+                    items.append((label, submenu_or_action))
+
+        self.menu_bar.set_items(items)
+
+    def _try_apply_last_layout_profile(self) -> None:
+        name = get_last_layout_profile_name()
+        if not name:
+            return
+        snap = load_layout_profile(name)
+        if snap:
+            self._apply_layout_snapshot(snap)
+
+    def action_save_layout_as(self):
+        def _validator(text: str):
+            name = normalize_profile_name(text)
+            if not name:
+                return "Nom invalide (1-32: lettres/chiffres/espace/_/-)"
+            return True
+
+        def _submit(text: str) -> None:
+            name = normalize_profile_name(text)
+            if not name:
+                return
+            save_layout_profile(name, self._layout_snapshot())
+            self._refresh_view_menu()
+
+        self.layout_profile_prompt.text_prompt_trigger(
+            title="Enregistrer la disposition",
+            subtitle="Nom du profil",
+            on_submit=_submit,
+            validator=_validator,
+        )
+
+    def action_load_layout_profile(self, profile_name: str) -> None:
+        snap = load_layout_profile(profile_name)
+        if snap:
+            self._apply_layout_snapshot(snap)
+            set_last_layout_profile_name(profile_name)
+
     def action_about(self):
         pass
                                                        
@@ -362,6 +480,9 @@ class App():
                 self.fade_in_alpha = max(0, self.fade_in_alpha - 60)
 
             for event in pygame.event.get():
+                if self.layout_profile_prompt.show_text_prompt_input:
+                    self.layout_profile_prompt.handle_event_text_prompt(event)
+                    continue
                 if 'IP_MODAL' in globals():
                     if ip_modal_handle_event(event): continue
                 
@@ -920,6 +1041,9 @@ class App():
 
             if self.button_emergency_stop.show_emergency_input:
                 self.button_emergency_stop.draw(self.screen, self.font)
+
+            if self.layout_profile_prompt.show_text_prompt_input:
+                self.layout_profile_prompt.draw(self.screen, self.font)
 
             if 'IP_MODAL' in globals():
                 ip_modal_draw(self.screen)

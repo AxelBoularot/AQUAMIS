@@ -39,6 +39,25 @@ class MenuBar:
 
         self._build_layout()
 
+    def set_items(self, items):
+        """Replace the menu items at runtime.
+
+        Accepts the same structure as the constructor: each item is either
+        (label, submenu_or_action) or (label, submenu_or_action, color).
+        """
+        normalized = []
+        for item in items:
+            if len(item) == 2:
+                normalized.append((item[0], item[1], None))
+            else:
+                normalized.append((item[0], item[1], item[2]))
+
+        self.items = normalized
+        self.open_index = None
+        self.hover_index = None
+        self.hover_sub_index = None
+        self.item_rects = self._build_layout()
+
     def _get_text_surf(self, text):
         if text not in self._text_cache:
             self._text_cache[text] = self.font.render(text, True, TEXT_COLOR)
