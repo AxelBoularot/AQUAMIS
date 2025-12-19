@@ -10,14 +10,14 @@ SHADOW_COLOR = (0, 0, 0, 100)
 class MenuBar:
     def __init__(self, font, items):
         self.font = font
-        # Support for items with optional colors: ("Label", submenu) or ("Label", submenu, color)
+                                                                                                 
         self.items = []
         for item in items:
             if len(item) == 2:
-                # No color specified, use default
+                                                 
                 self.items.append((item[0], item[1], None))
             else:
-                # Color specified
+                                 
                 self.items.append((item[0], item[1], item[2]))
         
         self.padding_x = 16
@@ -39,18 +39,37 @@ class MenuBar:
 
         self._build_layout()
 
+    def set_items(self, items):
+        """Replace the menu items at runtime.
+
+        Accepts the same structure as the constructor: each item is either
+        (label, submenu_or_action) or (label, submenu_or_action, color).
+        """
+        normalized = []
+        for item in items:
+            if len(item) == 2:
+                normalized.append((item[0], item[1], None))
+            else:
+                normalized.append((item[0], item[1], item[2]))
+
+        self.items = normalized
+        self.open_index = None
+        self.hover_index = None
+        self.hover_sub_index = None
+        self.item_rects = self._build_layout()
+
     def _get_text_surf(self, text):
         if text not in self._text_cache:
             self._text_cache[text] = self.font.render(text, True, TEXT_COLOR)
         return self._text_cache[text]
 
     def _get_lighter_color(self, color):
-        """Return a lighter version of the color for hover state."""
+                                                                    
         r, g, b = color[:3]
         return (min(255, r + 20), min(255, g + 20), min(255, b + 20))
 
     def _get_darker_color(self, color):
-        """Return a darker version of the color for active state."""
+                                                                    
         r, g, b = color[:3]
         return (max(0, r - 20), max(0, g - 20), max(0, b - 20))
 
@@ -109,38 +128,38 @@ class MenuBar:
         x = parent_rect.x
         y = parent_rect.bottom + 4
         
-        # Gestion dépassement écran
+                                   
         if screen_height and y + menu_height > screen_height:
             y = parent_rect.top - menu_height - 4
         
         return pygame.Rect(x, y, menu_width, menu_height), item_height, menu_width
 
     def draw_bar(self, surface):
-        """Dessine UNIQUEMENT la barre (à appeler AVANT l'interface)."""
+                                                                        
         if surface is None: return
         
-        # On ne recalcule le layout que si nécessaire, mais pour être sûr on le fait ici
-        # pour gérer les changements dynamiques éventuels
+                                                                                        
+                                                         
         self.item_rects = self._build_layout()
         
-        # 1. Fond de la barre
+                             
         bar_bg_rect = pygame.Rect(self.bar_margin_left, self.bar_margin_top, self.bar_width, self.bar_height)
         
-        # Ombre
+               
         shadow_rect = bar_bg_rect.copy()
         shadow_rect.move_ip(2, 2)
         pygame.draw.rect(surface, (10, 10, 10), shadow_rect, border_radius=8)
         
-        # Corps
+               
         pygame.draw.rect(surface, BG_COLOR, bar_bg_rect, border_radius=8)
         pygame.draw.rect(surface, BORDER_COLOR, bar_bg_rect, width=1, border_radius=8)
 
-        # 2. Éléments
+                     
         for i, (label, rect, submenu, item_color) in enumerate(self.item_rects):
             is_hovered = (i == self.hover_index)
             is_open = (i == self.open_index)
             
-            # Use custom color if specified, otherwise use default colors
+                                                                         
             if item_color is not None:
                 if is_open:
                     color = self._get_darker_color(item_color)
@@ -149,10 +168,10 @@ class MenuBar:
                 else:
                     color = item_color
             else:
-                # Default behavior
+                                  
                 color = ACTIVE_COLOR if is_open else HOVER_COLOR
                 if not (is_hovered or is_open):
-                    color = BG_COLOR  # No background for default items
+                    color = BG_COLOR                                   
             
             if is_hovered or is_open or item_color is not None:
                 bg_rect = rect.inflate(-4, -4)
@@ -163,7 +182,7 @@ class MenuBar:
             surface.blit(text_surf, text_rect)
 
     def draw_dropdown(self, surface):
-        """Dessine UNIQUEMENT le menu déroulant (à appeler APRÈS l'interface)."""
+                                                                                 
         if surface is None or self.open_index is None: return
 
         _, parent_rect, submenu, _ = self.item_rects[self.open_index]
@@ -171,18 +190,18 @@ class MenuBar:
 
         dropdown_rect, item_height, menu_width = self._calculate_dropdown_geometry(parent_rect, submenu, surface.get_height())
         
-        # Ombre
+               
         drop_shadow = dropdown_rect.copy()
         drop_shadow.move_ip(4, 4)
         s = pygame.Surface((drop_shadow.width, drop_shadow.height), pygame.SRCALPHA)
         pygame.draw.rect(s, SHADOW_COLOR, s.get_rect(), border_radius=8)
         surface.blit(s, drop_shadow.topleft)
 
-        # Fond
+              
         pygame.draw.rect(surface, BG_COLOR, dropdown_rect, border_radius=8)
         pygame.draw.rect(surface, BORDER_COLOR, dropdown_rect, width=1, border_radius=8)
 
-        # Éléments liste
+                        
         for idx, (label, action) in enumerate(submenu):
             item_y = dropdown_rect.y + 4 + (idx * item_height)
             item_rect = pygame.Rect(dropdown_rect.x + 4, item_y, menu_width - 8, item_height)
@@ -198,11 +217,11 @@ class MenuBar:
         self.draw_dropdown(surface)
 
     def handle_click(self, mouse_pos):
-        """Gère les clics."""
-        # 1. Clic dans le menu déroulant
+                             
+                                        
         if self.open_index is not None:
             _, parent_rect, submenu, _ = self.item_rects[self.open_index]
-            # Check if submenu is a list (dropdown) or callable (direct action)
+                                                                               
             if isinstance(submenu, list):
                 dropdown_rect, item_height, _ = self._calculate_dropdown_geometry(parent_rect, submenu)
                 if dropdown_rect.collidepoint(mouse_pos):
@@ -215,26 +234,26 @@ class MenuBar:
                         return True
                     return True 
         
-        # 2. Clic sur la barre
+                              
         clicked_on_bar = False
         for i, (_, rect, submenu, _) in enumerate(self.item_rects):
             if rect.collidepoint(mouse_pos):
                 clicked_on_bar = True
                 
-                # If submenu is callable, execute immediately
+                                                             
                 if callable(submenu):
                     submenu()
                     self.open_index = None
                     return True
                 
-                # Otherwise toggle dropdown
+                                           
                 if self.open_index == i:
                     self.open_index = None
                 else:
                     self.open_index = i
                 return True
 
-        # 3. Clic dehors
+                        
         if self.open_index is not None and not clicked_on_bar:
             self.open_index = None
             return True

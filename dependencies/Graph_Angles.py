@@ -51,9 +51,10 @@ class Graphs_Angles:
                     end_y = self.y_offset + self.height - (data[i] / self.max_value) * self.height
                     
                     pygame.draw.line(self.surface, color, (start_x, start_y), (end_x, end_y), 2)
-        
-        pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset, self.y_offset), (self.x_offset, self.y_offset + self.height), 2)
-        pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset, self.y_offset + self.height), (self.x_offset + self.width, self.y_offset + self.height), 2)
+
+                pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset, self.y_offset), (self.x_offset, self.y_offset + self.height), 2)
+                pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset, self.y_offset + self.height), (self.x_offset + self.width, self.y_offset + self.height), 2)
+
     
     def update_graph_angles(self, roll, pitch, yaw):
         self.add_data(roll, pitch, yaw)

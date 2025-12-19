@@ -1,4 +1,4 @@
-# Resolution and scaling system
+                               
 BASE_WIDTH = 1500
 BASE_HEIGHT = 750
 

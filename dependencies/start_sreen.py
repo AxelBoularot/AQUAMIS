@@ -17,19 +17,19 @@ from dependencies.IP_Config import ip_modal_handle_event, ip_modal_draw
 from dependencies.Loading_Screen import show_loading_screen
 from dependencies.Variable import BASE_WIDTH, BASE_HEIGHT
 
-# Create modern particles (remplace les étoiles)
+                                                
 particles = [ModernParticle() for _ in range(200)]
 
-USE_PHONE_SENSORS = False  # Défini par l'interface de démarrage
+USE_PHONE_SENSORS = False                                       
 
-# Fichier JSON contenant les données des capteurs du téléphone
-# Généré par phone_sensor.py
+                                                              
+                            
 SENSOR_DATA_FILE = "sensor_data.json"
 
-# Global variables for phone video stream
+                                         
 phone_video_frame = None
 phone_video_lock = threading.Lock()
-sensor_process = None # Global variable to store the sensor process
+sensor_process = None                                              
 
 def phone_video_stream_worker(url):
     global phone_video_frame
@@ -222,7 +222,7 @@ def show_start_screen(starting_screen, logo, starting_font_button):
             starting_screen.blit(fade_overlay, (0, 0))
             
             if transition_fade >= 255:
-                return # Sortie de la fonction vers main loop
+                return                                       
 
         pygame.display.flip()
         clock.tick(60)

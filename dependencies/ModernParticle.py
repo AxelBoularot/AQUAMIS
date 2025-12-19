@@ -3,8 +3,8 @@ import random
 
 BASE_WIDTH = 1500
 BASE_HEIGHT = 750
-PRIMARY_BLUE = (0x00, 0x5A, 0x9C)   # #005A9C Bleu foncé IPSA
-LIGHT_BLUE   = (0x46, 0xB3, 0xE6)   # #46B3E6 Bleu clair AMIS
+PRIMARY_BLUE = (0x00, 0x5A, 0x9C)                            
+LIGHT_BLUE   = (0x46, 0xB3, 0xE6)                            
 TEXT_PRIMARY = (40, 55, 70)
 TEXT_SECONDARY = (95, 115, 135)
 class ModernParticle:

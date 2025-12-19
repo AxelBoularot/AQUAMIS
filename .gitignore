@@ -1,11 +1,17 @@
-# vérifier ce qui est ignoré
-git status
-git ls-files --others --ignored --exclude-standard
+### Python
+**/__pycache__/
+*.py[cod]
+*$py.class
 
-# retirer les __pycache__ de l'index (sans supprimer localement)
-git rm -r --cached __pycache__
-# ou pour nettoyer tout ce qui est désormais ignoré
-git rm -r --cached .
+### Virtual environments
+.venv/
+venv/
+ENV/
 
-git add .
-git commit -m "Remove ignored files from repo"
+### Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+### Runtime-generated data
+/sensor_data.json

@@ -80,9 +80,10 @@ class Graphs_Main:
                 end_y_depth = self.y_offset + self.height - (self.data_depth[i] / self.max_value_depth) * self.height
                 
                 pygame.draw.line(self.surface, self.color_depth, (start_x_depth, start_y_depth), (end_x_depth, end_y_depth), 2)
-        
-        pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset+1, self.y_offset), (self.x_offset+1, self.y_offset + self.height), 2)
-        pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset, self.y_offset + self.height), (self.x_offset + self.width, self.y_offset + self.height), 2)
+
+            pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset+1, self.y_offset), (self.x_offset+1, self.y_offset + self.height), 2)
+            pygame.draw.line(self.surface, (255, 255, 255), (self.x_offset, self.y_offset + self.height), (self.x_offset + self.width, self.y_offset + self.height), 2)
+
 
     def update_graph_main(self):
         fluctuation_pressure = random.uniform(-0.2, 0.2)

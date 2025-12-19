@@ -5,7 +5,7 @@ import requests, os, re
 
 video_capture = cv2.VideoCapture(0)
 
-# video_capture.set(5,1)
+                        
 known_face_encodings = []
 known_face_names = []
 known_faces_filenames = []
