@@ -39,7 +39,33 @@ class Dashboard:
         self.speed_y = self.ballast_y + self.ballast_h + self.gap
         self.speed_h = 110
 
+        self._signal_rect_override: pygame.Rect | None = None
+        self._ballast_rect_override: pygame.Rect | None = None
+        self._speed_rect_override: pygame.Rect | None = None
+        self._speed_switch_rect_override: pygame.Rect | None = None
+
         self._recalc_layout()
+
+    def set_signal_rect(self, rect: pygame.Rect | None) -> None:
+        self._signal_rect_override = rect.copy() if rect is not None else None
+
+    def set_ballast_rect(self, rect: pygame.Rect | None) -> None:
+        self._ballast_rect_override = rect.copy() if rect is not None else None
+
+    def set_speed_rect(self, rect: pygame.Rect | None) -> None:
+        self._speed_rect_override = rect.copy() if rect is not None else None
+        if rect is None:
+            self._speed_switch_rect_override = None
+            return
+
+        btn_w = min(120, max(80, rect.w // 3))
+        btn_h = min(34, max(22, rect.h // 4))
+        self._speed_switch_rect_override = pygame.Rect(
+            rect.centerx - btn_w // 2,
+            rect.bottom - btn_h - max(8, rect.h // 10),
+            btn_w,
+            btn_h,
+        )
 
     def _recalc_layout(self):
         self.signal_rect = pygame.Rect(self.signal_x, self.signal_y, self.width, self.signal_h)
@@ -75,7 +101,8 @@ class Dashboard:
 
     def handle_event(self, event, mouse_pos):
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.speed_switch_rect.collidepoint(mouse_pos):
+            active_rect = self._speed_switch_rect_override or self.speed_switch_rect
+            if active_rect.collidepoint(mouse_pos):
                 self.speed_unit = "Km/h" if self.speed_unit == "Knots" else "Knots"
                 return True
         return False
@@ -91,35 +118,65 @@ class Dashboard:
         self.draw_speed(surface, mouse_pos=mouse_pos)
 
     def draw_signal(self, surface, mouse_pos=None):
-        pygame.draw.rect(surface, DARK_GRAY, self.signal_rect, border_radius=8)
-        pygame.draw.rect(surface, BORDER_GRAY, self.signal_rect, 1, border_radius=8)
+        rect = self._signal_rect_override or self.signal_rect
+        pygame.draw.rect(surface, DARK_GRAY, rect, border_radius=8)
+        pygame.draw.rect(surface, BORDER_GRAY, rect, 1, border_radius=8)
 
-        surface.blit(self.font15.render("SIGNAL STRENGTH", True, WHITE), (self.signal_rect.x + 20, self.signal_rect.y + 15))
-        for i in range(5):
-            color = GREEN if i < (self.signal_strength / 20) else (50, 50, 50)
-            pygame.draw.rect(surface, color, (self.signal_rect.x + 20 + (i * 30), self.signal_rect.y + 45, 20, 30))
+        pad_x = max(10, rect.w // 18)
+        pad_y = max(8, rect.h // 12)
+        title_surf = self.font15.render("SIGNAL STRENGTH", True, WHITE)
+        surface.blit(title_surf, (rect.x + pad_x, rect.y + pad_y))
 
-        surface.blit(self.font15.render(f"{int(self.signal_strength)}%", True, WHITE), (self.signal_rect.right - 60, self.signal_rect.y + 18))
+        pct_surf = self.font15.render(f"{int(self.signal_strength)}%", True, WHITE)
+        surface.blit(pct_surf, (rect.right - pct_surf.get_width() - pad_x, rect.y + pad_y))
+
+        n = 5
+        bar_area_y = rect.y + pad_y + title_surf.get_height() + max(6, rect.h // 10)
+        bar_h = min(32, max(18, rect.h // 3))
+        bar_w_total = max(0, rect.w - pad_x * 2)
+        gap = max(4, bar_w_total // 40)
+        bar_w = max(8, (bar_w_total - gap * (n - 1)) // n) if n > 0 else 0
+        filled = int(self.signal_strength // 20)
+
+        for i in range(n):
+            color = GREEN if i < filled else (50, 50, 50)
+            bx = rect.x + pad_x + i * (bar_w + gap)
+            by = bar_area_y
+            pygame.draw.rect(surface, color, (bx, by, bar_w, bar_h), border_radius=3)
 
     def draw_ballast(self, surface, mouse_pos=None):
-        pygame.draw.rect(surface, DARK_GRAY, self.ballast_rect, border_radius=8)
-        pygame.draw.rect(surface, BORDER_GRAY, self.ballast_rect, 1, border_radius=8)
+        rect = self._ballast_rect_override or self.ballast_rect
+        pygame.draw.rect(surface, DARK_GRAY, rect, border_radius=8)
+        pygame.draw.rect(surface, BORDER_GRAY, rect, 1, border_radius=8)
 
-        surface.blit(self.font15.render("BALLAST", True, WHITE), (self.ballast_rect.x + 20, self.ballast_rect.y + 15))
-        surface.blit(self.font15.render(f"{int(self.ballast_level)}%", True, WHITE), (self.ballast_rect.right - 60, self.ballast_rect.y + 15))
-        pygame.draw.rect(surface, (50, 50, 50), (self.ballast_rect.x + 20, self.ballast_rect.y + 55, 330, 20), border_radius=5)
-        pygame.draw.rect(
-            surface,
-            BLUE,
-            (self.ballast_rect.x + 20, self.ballast_rect.y + 55, 330 * (self.ballast_level / 100), 20),
-            border_radius=5,
-        )
+        pad_x = max(10, rect.w // 18)
+        pad_y = max(8, rect.h // 12)
+        title_surf = self.font15.render("BALLAST", True, WHITE)
+        surface.blit(title_surf, (rect.x + pad_x, rect.y + pad_y))
+
+        pct_surf = self.font15.render(f"{int(self.ballast_level)}%", True, WHITE)
+        surface.blit(pct_surf, (rect.right - pct_surf.get_width() - pad_x, rect.y + pad_y))
+
+        bar_y = rect.y + pad_y + title_surf.get_height() + max(6, rect.h // 10)
+        bar_h = min(22, max(14, rect.h // 4))
+        bar_w = max(20, rect.w - pad_x * 2)
+        bg_bar = pygame.Rect(rect.x + pad_x, bar_y, bar_w, bar_h)
+        pygame.draw.rect(surface, (50, 50, 50), bg_bar, border_radius=5)
+
+        fill_w = int(bg_bar.w * (self.ballast_level / 100))
+        fg_bar = pygame.Rect(bg_bar.x, bg_bar.y, max(0, fill_w), bg_bar.h)
+        pygame.draw.rect(surface, BLUE, fg_bar, border_radius=5)
 
     def draw_speed(self, surface, mouse_pos=None):
-        pygame.draw.rect(surface, DARK_GRAY, self.speed_rect, border_radius=8)
-        pygame.draw.rect(surface, BORDER_GRAY, self.speed_rect, 1, border_radius=8)
+        rect = self._speed_rect_override or self.speed_rect
+        speed_switch_rect = self._speed_switch_rect_override or self.speed_switch_rect
 
-        surface.blit(self.font15.render("SPEED", True, WHITE), (self.speed_rect.x + 20, self.speed_rect.y + 15))
+        pygame.draw.rect(surface, DARK_GRAY, rect, border_radius=8)
+        pygame.draw.rect(surface, BORDER_GRAY, rect, 1, border_radius=8)
+
+        pad_x = max(10, rect.w // 18)
+        pad_y = max(8, rect.h // 12)
+        surface.blit(self.font15.render("SPEED", True, WHITE), (rect.x + pad_x, rect.y + pad_y))
 
         display_speed = self.speed_value
         if self.speed_unit == "Km/h":
@@ -127,14 +184,14 @@ class Dashboard:
 
         speed_text = self.font.render(f"{display_speed:.1f}", True, YELLOW)
         speed_text = pygame.transform.scale(speed_text, (int(speed_text.get_width() * 1.5), int(speed_text.get_height() * 1.5)))
-        surface.blit(speed_text, (self.speed_rect.centerx - speed_text.get_width()//2, self.speed_rect.centery - 25))
+        surface.blit(speed_text, (rect.centerx - speed_text.get_width()//2, rect.centery - 25))
 
-        is_hovered = mouse_pos and self.speed_switch_rect.collidepoint(mouse_pos)
+        is_hovered = mouse_pos and speed_switch_rect.collidepoint(mouse_pos)
         btn_color = BTN_HOVER_COLOR if is_hovered else BTN_BG_COLOR
 
-        pygame.draw.rect(surface, btn_color, self.speed_switch_rect, border_radius=5)
+        pygame.draw.rect(surface, btn_color, speed_switch_rect, border_radius=5)
         if is_hovered:
-            pygame.draw.rect(surface, BORDER_GRAY, self.speed_switch_rect, 1, border_radius=5)
+            pygame.draw.rect(surface, BORDER_GRAY, speed_switch_rect, 1, border_radius=5)
 
         unit_text = self.font15.render(self.speed_unit, True, BTN_TEXT_COLOR)
-        surface.blit(unit_text, (self.speed_switch_rect.centerx - unit_text.get_width()//2, self.speed_switch_rect.centery - unit_text.get_height()//2))
+        surface.blit(unit_text, (speed_switch_rect.centerx - unit_text.get_width()//2, speed_switch_rect.centery - unit_text.get_height()//2))

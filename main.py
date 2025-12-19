@@ -594,6 +594,7 @@ class App():
                         self.menu_bar.handle_click(real_pos)
 
                     if not self.window_system.is_minimized("Speed"):
+                        self.dashboard.set_speed_rect(self.speed_window.rect)
                         self.dashboard.handle_event(event, virtual_event_pos)
 
                     for button in self.all_buttons:
@@ -696,23 +697,49 @@ class App():
                 right_panel_rect = self.right_graph_window.rect
                 pygame.draw.rect(self.virtual_screen, (25, 25, 25), right_panel_rect, border_radius=8)
                 pygame.draw.rect(self.virtual_screen, (60, 60, 60), right_panel_rect, 1, border_radius=8)
-                self.virtual_screen.blit(self.font15.render(f"ROLL: {int(self.roll)}", True, (255, 0, 0)), (right_panel_rect.x + 280, right_panel_rect.y + 65))
-                self.virtual_screen.blit(self.font15.render(f"PITCH: {int(self.pitch)} ", True, (0, 255, 0)), (right_panel_rect.x + 280, right_panel_rect.y + 90))
-                self.virtual_screen.blit(self.font15.render(f"YAW: {int(self.yaw)} ", True, BLUE), (right_panel_rect.x + 280, right_panel_rect.y + 115))
 
+                pad = 7
                 title_gap = self.right_graph_window.titlebar_height + 12
-                angles_y = right_panel_rect.y + title_gap
-                pressure_y = angles_y + 170 + 20
-                self.graph_angles.x_offset = right_panel_rect.x + 7
+                inner_left = right_panel_rect.x + pad
+                inner_right = right_panel_rect.right - pad
+                content_top = right_panel_rect.y + title_gap
+                content_bottom = right_panel_rect.bottom - pad
+                content_h = max(0, content_bottom - content_top)
+                gap = 16
+
+                angle_h = max(70, int(content_h * 0.48))
+                pressure_h = max(70, content_h - angle_h - gap)
+
+                legend_w = 120
+                graph_w = max(80, (inner_right - inner_left) - legend_w)
+                if (inner_right - inner_left) <= 140:
+                    graph_w = max(80, inner_right - inner_left)
+
+                angles_y = content_top
+                pressure_y = angles_y + angle_h + gap
+
+                self.graph_angles.x_offset = inner_left
                 self.graph_angles.y_offset = angles_y
-                self.graph_pressure_depth.x_offset = right_panel_rect.x + 7
+                self.graph_angles.width = graph_w
+                self.graph_angles.height = angle_h
+
+                self.graph_pressure_depth.x_offset = inner_left
                 self.graph_pressure_depth.y_offset = pressure_y
+                self.graph_pressure_depth.width = graph_w
+                self.graph_pressure_depth.height = pressure_h
+
+                label_x = inner_left + graph_w + 12
+                label_y0 = right_panel_rect.y + title_gap + 6
+                if label_x < inner_right - 40:
+                    self.virtual_screen.blit(self.font15.render(f"ROLL: {int(self.roll)}", True, (255, 0, 0)), (label_x, label_y0 + 30))
+                    self.virtual_screen.blit(self.font15.render(f"PITCH: {int(self.pitch)} ", True, (0, 255, 0)), (label_x, label_y0 + 55))
+                    self.virtual_screen.blit(self.font15.render(f"YAW: {int(self.yaw)} ", True, BLUE), (label_x, label_y0 + 80))
                 self.graph_pressure_depth.update_graph_main()
                 self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
 
                 elapsed = time.time() - self.start_time
                 timer_surf = self.font15.render(f"{int(elapsed)//60:02d} min {int(elapsed)%60:02d} s", True, WHITE)
-                timer_x = self.graph_angles.x_offset + 240 + 10
+                timer_x = self.graph_angles.x_offset + self.graph_angles.width + 10
                 timer_y = angles_y + 5
                 self.virtual_screen.blit(timer_surf, (timer_x, timer_y))
 
@@ -736,6 +763,7 @@ class App():
             def _draw_signal():
                 if self.window_system.is_minimized("Signal"):
                     return
+                self.dashboard.set_signal_rect(self.signal_window.rect)
                 self.dashboard.draw_signal(self.virtual_screen, mouse_pos=mouse_pos_virtual)
                 self.signal_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.signal_window, mouse_pos_virtual)
@@ -743,6 +771,7 @@ class App():
             def _draw_ballast():
                 if self.window_system.is_minimized("Ballast"):
                     return
+                self.dashboard.set_ballast_rect(self.ballast_window.rect)
                 self.dashboard.draw_ballast(self.virtual_screen, mouse_pos=mouse_pos_virtual)
                 self.ballast_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.ballast_window, mouse_pos_virtual)
@@ -750,6 +779,7 @@ class App():
             def _draw_speed():
                 if self.window_system.is_minimized("Speed"):
                     return
+                self.dashboard.set_speed_rect(self.speed_window.rect)
                 self.dashboard.draw_speed(self.virtual_screen, mouse_pos=mouse_pos_virtual)
                 self.speed_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.speed_window, mouse_pos_virtual)
