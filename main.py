@@ -3,10 +3,9 @@ import time
 import os
 import threading
 import json
+import logging
 import cv2
 import numpy as np
-
-              
 import dependencies.Cube as Cube
 from dependencies.Password import Special_button
 from dependencies.Graph_Pressure_Depth import Graphs_Main
@@ -34,7 +33,7 @@ from dependencies.WindowLayoutProfiles import (
 )
 import dependencies.start_sreen as start_screen_module
 from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
-from dependencies.Logsys import LogSystem
+from dependencies.Logsys import LogSystem, UILogHandler
 from dependencies.AI_Config import load_yolo_model
 from dependencies.Dashboard import Dashboard
 from dependencies.DraggableWindow import DraggableWindow
@@ -100,7 +99,16 @@ class App():
             ("Start", self.action_start, (0, 150, 0)),
             ("Stop", self.action_emergency_stop, (150, 0, 0)),
             ("Views", []),
-            ("Tools", [("Restart Stream", lambda: None)]),
+            (
+                "Tools",
+                [
+                    ("Restart Stream", lambda: None),
+                    ("Log Filter: DEBUG", lambda: self.action_set_log_filter("DEBUG")),
+                    ("Log Filter: INFO", lambda: self.action_set_log_filter("INFO")),
+                    ("Log Filter: WARNING", lambda: self.action_set_log_filter("WARNING")),
+                    ("Log Filter: ERROR", lambda: self.action_set_log_filter("ERROR")),
+                ],
+            ),
             ("Help", [("About", self.action_about)]),
         ]
         self.menu_bar = MenuBar(self.font15, self._base_menu_items)
@@ -117,8 +125,6 @@ class App():
                                                         
         self.pressure_depth_window = DraggableWindow(pygame.Rect(390, 500, 160, 160))
         self.temp_window = DraggableWindow(pygame.Rect(560, 500, 160, 160))
-
-                           
         self.thrusters_window = DraggableWindow(pygame.Rect(730, 500, 380, 120))
         self.power_window = DraggableWindow(pygame.Rect(730, 630, 380, 120))
         self.camera_controls_window = DraggableWindow(pygame.Rect(1120, 10, 370, 110))
@@ -156,13 +162,24 @@ class App():
         show_loading_screen(self.is_loading, self.get_current_step, starting_screen)
 
         self.log_system = LogSystem(self.font15)
-        self.log_system.add_log("System initialization complete", "info")
+
+        self.logger = logging.getLogger("AQUAMIS")
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.propagate = False
+
+        if not any(isinstance(h, UILogHandler) for h in self.logger.handlers):
+            ui_handler = UILogHandler(self.log_system)
+            ui_handler.setLevel(logging.DEBUG)
+            ui_handler.setFormatter(logging.Formatter("%(message)s"))
+            self.logger.addHandler(ui_handler)
+
+        self.logger.info("System initialization complete")
         if not start_screen_module.USE_PHONE_SENSORS and self.socket_client and self.socket_client.running:
-            self.log_system.add_log("Connected to server successfully", "info")
+            self.logger.info("Connected to server successfully")
         elif start_screen_module.USE_PHONE_SENSORS:
-            self.log_system.add_log("Phone sensor mode activated", "info")
+            self.logger.info("Phone sensor mode activated")
         else:
-            self.log_system.add_log("Connection failed - check server", "error")
+            self.logger.error("Connection failed - check server")
 
         self.screen = starting_screen
         self.fade_in_alpha = 255
@@ -187,8 +204,18 @@ class App():
         self.motor_box = CommunicationBox(1395, 620, BOX_WIDTH, BOX_HEIGHT, self.font15, WHITE, GREEN, RED, "ENGINE: OK")
         self.pressure_sensor_box = CommunicationBox(1395, 697, BOX_WIDTH, BOX_HEIGHT, self.font15, WHITE, GREEN, RED, "PRESSURE: OK")
 
+        self.status_boxes = [
+            self.comm_box,
+            self.cam_box,
+            self.mpu_box,
+            self.servo_box,
+            self.motor_box,
+            self.pressure_sensor_box,
+        ]
+        self._status_prev_ok = {box: bool(box.communication_ok) for box in self.status_boxes}
+
         self._status_rel_centers = {}
-        for box in (self.comm_box, self.cam_box, self.mpu_box, self.servo_box, self.motor_box, self.pressure_sensor_box):
+        for box in self.status_boxes:
             cx, cy = box.rect.center
             self._status_rel_centers[box] = (cx - self.status_window.rect.x, cy - self.status_window.rect.y)
 
@@ -258,11 +285,50 @@ class App():
         )
         self.graph_angles = Graphs_Angles(self.virtual_screen, 240, 170, 180)
 
+        # Click targets (virtual coords) for gyro series selection
+        self._gyro_series_click_rects: dict[str, pygame.Rect] = {}
+        self._pd_series_click_rects: dict[str, pygame.Rect] = {}
+
+        # Breaker keybinds (toggle only the targeted breaker)
+        self._breaker_key_map = {
+            pygame.K_u: self.comm_box,             # COMMS
+            pygame.K_i: self.cam_box,              # CAM
+            pygame.K_o: self.mpu_box,              # MPU
+            pygame.K_p: self.servo_box,            # SERVO
+            pygame.K_k: self.motor_box,            # ENGINE
+            pygame.K_l: self.pressure_sensor_box,  # PRESSURE
+        }
+
     def is_loading(self):
         return not self.loading_complete
 
     def get_current_step(self):
         return self.current_loading_step
+
+    def _update_status_boxes(self, key: int | None = None) -> None:
+        # Only toggles when the configured key is pressed.
+        if key is None or not hasattr(self, "_breaker_key_map"):
+            return
+        box = self._breaker_key_map.get(int(key))
+        if box is None:
+            return
+
+        before = bool(getattr(box, "communication_ok", False))
+        if hasattr(box, "toggle_ok"):
+            box.toggle_ok()
+        else:
+            box.communication_ok = not before
+            if hasattr(box, "_draw_text"):
+                box._draw_text()
+        after = bool(getattr(box, "communication_ok", False))
+        self._status_prev_ok[box] = after
+
+        msg = getattr(box, "text", "STATUS")
+        if hasattr(self, "logger"):
+            if after:
+                self.logger.info(msg)
+            else:
+                self.logger.warning(msg)
 
     def load_resources(self):
         self.loading_progress = 10
@@ -333,17 +399,22 @@ class App():
         print("\nAction Triggered")
 
     def action_start(self):
-        self.log_system.add_log("System Started", "info")
+        self.logger.info("System Started")
         print("\nSystem Started")
 
     def action_stop(self):
         self.but_stop()                 
-        self.log_system.add_log("System Stopped", "warning")
+        self.logger.warning("System Stopped")
         print("\nSystem Stopped")
 
     def action_emergency_stop(self):
         self.button_emergency_stop.emergency_trigger()
-        self.log_system.add_log("Emergency Stop Requested", "warning")
+        self.logger.warning("Emergency Stop Requested")
+
+    def action_set_log_filter(self, level_name: str) -> None:
+        self.log_system.set_min_level(level_name)
+        if hasattr(self, "logger"):
+            self.logger.info(f"Log filter set to {self.log_system.get_min_level_name()}")
 
     def action_open(self):
         open_tk_window()
@@ -470,7 +541,7 @@ class App():
                                                        
 
     def main(self):
-        self.log_system.add_log("Main loop started", "info")
+        self.logger.info("Main loop started")
         while self.running:
             self.keys = pygame.key.get_pressed()
 
@@ -525,16 +596,13 @@ class App():
                     result_emergency = self.button_emergency_stop.handle_event_emergency(event)
 
                     if result_emergency == "emergency_stop":
-                                                                       
                         if self.socket_client and hasattr(self.socket_client, 'running') and self.socket_client.running:
                             self.socket_client.close()
                         if self.video_receiver:
                             self.video_receiver.running = False
                         if self.data_handler:
                             self.data_handler.running = False
-                                                   
-                    self.comm_box.update_status()
-               
+                    self._update_status_boxes(event.key)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.button_emergency_stop.show_emergency_input: continue
 
@@ -552,6 +620,34 @@ class App():
                     )
 
                     handled_panel = False
+
+                    # Gyro graph series toggles (ROLL/PITCH/YAW) in the Graphs window
+                    if event.button == 1 and hasattr(self, "_gyro_series_click_rects"):
+                        for series, r in list(self._gyro_series_click_rects.items()):
+                            if r.collidepoint(virtual_event_pos):
+                                if hasattr(self, "graph_angles"):
+                                    self.graph_angles.toggle_series(series)
+                                if hasattr(self, "logger"):
+                                    state = "ON" if self.graph_angles.is_series_enabled(series) else "OFF"
+                                    self.logger.info(f"Gyro graph: {series.upper()} {state}")
+                                handled_panel = True
+                                break
+                    if handled_panel:
+                        continue
+
+                    # Pressure/Depth graph series toggles
+                    if event.button == 1 and hasattr(self, "_pd_series_click_rects"):
+                        for series, r in list(self._pd_series_click_rects.items()):
+                            if r.collidepoint(virtual_event_pos):
+                                if hasattr(self, "graph_pressure_depth"):
+                                    self.graph_pressure_depth.toggle_series(series)
+                                if hasattr(self, "logger"):
+                                    state = "ON" if self.graph_pressure_depth.is_series_enabled(series) else "OFF"
+                                    self.logger.info(f"Pressure/Depth graph: {series.upper()} {state}")
+                                handled_panel = True
+                                break
+                    if handled_panel:
+                        continue
                     if not self.window_system.is_minimized("CameraControls"):
                         before_paused = self.camera_controls.paused
                         handled_panel |= handle_camera_controls_event(
@@ -561,10 +657,7 @@ class App():
                             self.camera_controls_window.rect,
                         )
                         if handled_panel and self.camera_controls.paused != before_paused:
-                            self.log_system.add_log(
-                                "Camera paused" if self.camera_controls.paused else "Camera resumed",
-                                "info",
-                            )
+                            self.logger.info("Camera paused" if self.camera_controls.paused else "Camera resumed")
                     if not self.window_system.is_minimized("AIOptions"):
                         before_enabled = self.ai_options.enabled
                         before_tracking = self.ai_options.tracking
@@ -576,15 +669,11 @@ class App():
                         )
                         if handled_panel:
                             if self.ai_options.enabled != before_enabled:
-                                self.log_system.add_log(
-                                    f"AI detections {'enabled' if self.ai_options.enabled else 'disabled'}",
-                                    "info",
+                                self.logger.info(
+                                    f"AI detections {'enabled' if self.ai_options.enabled else 'disabled'}"
                                 )
                             if self.ai_options.tracking != before_tracking:
-                                self.log_system.add_log(
-                                    f"AI tracking {'enabled' if self.ai_options.tracking else 'disabled'}",
-                                    "info",
-                                )
+                                self.logger.info(f"AI tracking {'enabled' if self.ai_options.tracking else 'disabled'}")
                     if handled_panel:
                         continue
 
@@ -594,6 +683,7 @@ class App():
                         self.menu_bar.handle_click(real_pos)
 
                     if not self.window_system.is_minimized("Speed"):
+                        self.dashboard.set_speed_rect(self.speed_window.rect)
                         self.dashboard.handle_event(event, virtual_event_pos)
 
                     for button in self.all_buttons:
@@ -696,23 +786,87 @@ class App():
                 right_panel_rect = self.right_graph_window.rect
                 pygame.draw.rect(self.virtual_screen, (25, 25, 25), right_panel_rect, border_radius=8)
                 pygame.draw.rect(self.virtual_screen, (60, 60, 60), right_panel_rect, 1, border_radius=8)
-                self.virtual_screen.blit(self.font15.render(f"ROLL: {int(self.roll)}", True, (255, 0, 0)), (right_panel_rect.x + 280, right_panel_rect.y + 65))
-                self.virtual_screen.blit(self.font15.render(f"PITCH: {int(self.pitch)} ", True, (0, 255, 0)), (right_panel_rect.x + 280, right_panel_rect.y + 90))
-                self.virtual_screen.blit(self.font15.render(f"YAW: {int(self.yaw)} ", True, BLUE), (right_panel_rect.x + 280, right_panel_rect.y + 115))
 
+                pad = 7
                 title_gap = self.right_graph_window.titlebar_height + 12
-                angles_y = right_panel_rect.y + title_gap
-                pressure_y = angles_y + 170 + 20
-                self.graph_angles.x_offset = right_panel_rect.x + 7
+                inner_left = right_panel_rect.x + pad
+                inner_right = right_panel_rect.right - pad
+                content_top = right_panel_rect.y + title_gap
+                content_bottom = right_panel_rect.bottom - pad
+                content_h = max(0, content_bottom - content_top)
+                gap = 16
+
+                angle_h = max(70, int(content_h * 0.48))
+                pressure_h = max(70, content_h - angle_h - gap)
+
+                legend_w = 120
+                graph_w = max(80, (inner_right - inner_left) - legend_w)
+                if (inner_right - inner_left) <= 140:
+                    graph_w = max(80, inner_right - inner_left)
+
+                angles_y = content_top
+                pressure_y = angles_y + angle_h + gap
+
+                self.graph_angles.x_offset = inner_left
                 self.graph_angles.y_offset = angles_y
-                self.graph_pressure_depth.x_offset = right_panel_rect.x + 7
+                self.graph_angles.width = graph_w
+                self.graph_angles.height = angle_h
+
+                self.graph_pressure_depth.x_offset = inner_left
                 self.graph_pressure_depth.y_offset = pressure_y
+                self.graph_pressure_depth.width = graph_w
+                self.graph_pressure_depth.height = pressure_h
+
+                label_x = inner_left + graph_w + 12
+                label_y0 = right_panel_rect.y + title_gap + 6
+                self._gyro_series_click_rects = {}
+                self._pd_series_click_rects = {}
+                if label_x < inner_right - 40:
+                    enabled = getattr(self.graph_angles, "enabled_series", {"roll", "pitch", "yaw"})
+                    inactive_c = (140, 155, 170)
+
+                    roll_c = (255, 0, 0) if "roll" in enabled else inactive_c
+                    pitch_c = (0, 255, 0) if "pitch" in enabled else inactive_c
+                    yaw_c = BLUE if "yaw" in enabled else inactive_c
+
+                    roll_s = self.font15.render(f"ROLL: {int(self.roll)}", True, roll_c)
+                    pitch_s = self.font15.render(f"PITCH: {int(self.pitch)}", True, pitch_c)
+                    yaw_s = self.font15.render(f"YAW: {int(self.yaw)}", True, yaw_c)
+
+                    roll_pos = (label_x, label_y0 + 30)
+                    pitch_pos = (label_x, label_y0 + 55)
+                    yaw_pos = (label_x, label_y0 + 80)
+
+                    self.virtual_screen.blit(roll_s, roll_pos)
+                    self.virtual_screen.blit(pitch_s, pitch_pos)
+                    self.virtual_screen.blit(yaw_s, yaw_pos)
+
+                    # Make the whole text line clickable
+                    self._gyro_series_click_rects["roll"] = roll_s.get_rect(topleft=roll_pos)
+                    self._gyro_series_click_rects["pitch"] = pitch_s.get_rect(topleft=pitch_pos)
+                    self._gyro_series_click_rects["yaw"] = yaw_s.get_rect(topleft=yaw_pos)
+
+                    # Pressure/Depth toggles near the pressure graph block
+                    pd_enabled = getattr(self.graph_pressure_depth, "enabled_series", {"pressure", "depth"})
+                    p_c = (255, 0, 0) if "pressure" in pd_enabled else inactive_c
+                    d_c = (0, 0, 255) if "depth" in pd_enabled else inactive_c
+
+                    p_lbl = self.font15.render("PRESSURE", True, p_c)
+                    d_lbl = self.font15.render("DEPTH", True, d_c)
+
+                    pd_y = pressure_y + 8
+                    p_pos = (label_x, pd_y)
+                    d_pos = (label_x, pd_y + 22)
+                    self.virtual_screen.blit(p_lbl, p_pos)
+                    self.virtual_screen.blit(d_lbl, d_pos)
+                    self._pd_series_click_rects["pressure"] = p_lbl.get_rect(topleft=p_pos)
+                    self._pd_series_click_rects["depth"] = d_lbl.get_rect(topleft=d_pos)
                 self.graph_pressure_depth.update_graph_main()
                 self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
 
                 elapsed = time.time() - self.start_time
                 timer_surf = self.font15.render(f"{int(elapsed)//60:02d} min {int(elapsed)%60:02d} s", True, WHITE)
-                timer_x = self.graph_angles.x_offset + 240 + 10
+                timer_x = self.graph_angles.x_offset + self.graph_angles.width + 10
                 timer_y = angles_y + 5
                 self.virtual_screen.blit(timer_surf, (timer_x, timer_y))
 
@@ -736,6 +890,7 @@ class App():
             def _draw_signal():
                 if self.window_system.is_minimized("Signal"):
                     return
+                self.dashboard.set_signal_rect(self.signal_window.rect)
                 self.dashboard.draw_signal(self.virtual_screen, mouse_pos=mouse_pos_virtual)
                 self.signal_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.signal_window, mouse_pos_virtual)
@@ -743,6 +898,7 @@ class App():
             def _draw_ballast():
                 if self.window_system.is_minimized("Ballast"):
                     return
+                self.dashboard.set_ballast_rect(self.ballast_window.rect)
                 self.dashboard.draw_ballast(self.virtual_screen, mouse_pos=mouse_pos_virtual)
                 self.ballast_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.ballast_window, mouse_pos_virtual)
@@ -750,6 +906,7 @@ class App():
             def _draw_speed():
                 if self.window_system.is_minimized("Speed"):
                     return
+                self.dashboard.set_speed_rect(self.speed_window.rect)
                 self.dashboard.draw_speed(self.virtual_screen, mouse_pos=mouse_pos_virtual)
                 self.speed_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.speed_window, mouse_pos_virtual)
@@ -885,11 +1042,8 @@ class App():
                                         model = model.to("cpu")
                                     except Exception:
                                         pass
-                                    if hasattr(self, "log_system"):
-                                        self.log_system.add_log(
-                                            "CUDA non disponible/incompatible; YOLO passe en CPU",
-                                            "warning",
-                                        )
+                                    if hasattr(self, "logger"):
+                                        self.logger.warning("CUDA non disponible/incompatible; YOLO passe en CPU")
                                     print("CUDA not usable; switched YOLO to CPU.")
 
                                     results = model.track(
@@ -927,17 +1081,20 @@ class App():
 
                             if not self._yolo_cpu_fallback_done:
                                 self._yolo_cpu_fallback_done = True
-                                if hasattr(self, "log_system"):
-                                    self.log_system.add_log(
-                                        "CUDA non compatible; YOLO forcé en CPU",
-                                        "warning",
-                                    )
+                                if hasattr(self, "logger"):
+                                    self.logger.warning("CUDA non compatible; YOLO forcé en CPU")
                                 print("CUDA not compatible; forcing YOLO to CPU.")
                             return
 
                         print(f"Video Error: {e}")
 
-                self.cube.rect.center = (camera_rect.x + 610, camera_rect.y + 90)
+                pad = 12
+                # Keep cube anchored near top-right of the camera window (and inside bounds)
+                cx = camera_rect.right - max(70, int(camera_rect.w * 0.16))
+                cy = camera_rect.y + max(70, int(camera_rect.h * 0.18))
+                cx = max(camera_rect.x + pad, min(cx, camera_rect.right - pad))
+                cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
+                self.cube.rect.center = (cx, cy)
                 self.cube.position = self.cube.rect.center
                 self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
                 self.cube_sprite_group.draw(self.virtual_screen)
