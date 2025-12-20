@@ -15,6 +15,7 @@ from dependencies.Scaling import (
     convert_mouse_pos_with_menu,
     compute_transform_with_menu,
 )
+from dependencies.keybinds import keybinds
 from dependencies.Font import load_brand_font
 from dependencies.Button import Button
 from dependencies.MenuBar import MenuBar
@@ -129,6 +130,7 @@ class App():
         self.power_window = DraggableWindow(pygame.Rect(730, 630, 380, 120))
         self.camera_controls_window = DraggableWindow(pygame.Rect(1120, 10, 370, 110))
         self.ai_options_window = DraggableWindow(pygame.Rect(1120, 130, 370, 120))
+        self.keybinds_window = DraggableWindow(pygame.Rect(200, 200, 260, 150))
 
         self.window_system = WindowSystem(self.font15, self.menu_bar)
         self.window_system.add_window("Camera", self.camera_window, kind="generic")
@@ -148,11 +150,13 @@ class App():
         self.window_system.add_window("Power", self.power_window, kind="generic")
         self.window_system.add_window("CameraControls", self.camera_controls_window, kind="generic", start_minimized=True)
         self.window_system.add_window("AIOptions", self.ai_options_window, kind="generic", start_minimized=True)
+        self.window_system.add_window("Keybinds", self.keybinds_window, kind="generic", start_minimized=True)
 
         self.battery = BatterySimulator()
         self.telemetry = TelemetryProvider()
         self.camera_controls = CameraControlsState()
         self.ai_options = AIDetectionOptionsState()
+        self.keybinds = keybinds(200, 200, self.font15, lift=40)
         self._last_camera_frame = None
 
         load_thread = threading.Thread(target=self.load_resources)
@@ -256,6 +260,7 @@ class App():
         self.window_system.set_default_layout("Power", (730, 630, 380, 120))
         self.window_system.set_default_layout("CameraControls", (1120, 10, 370, 110))
         self.window_system.set_default_layout("AIOptions", (1120, 130, 370, 120))
+        self.window_system.set_default_layout("Keybinds", (500, 500, 260, 150))
 
         self._refresh_view_menu()
         self._try_apply_last_layout_profile()
@@ -556,7 +561,12 @@ class App():
                     continue
                 if 'IP_MODAL' in globals():
                     if ip_modal_handle_event(event): continue
-                
+
+                if hasattr(self, "keybinds") and event.type in (pygame.KEYDOWN, pygame.KEYUP):
+                    try:
+                        self.keybinds.handle_event(event)
+                    except Exception:
+                        pass
                 if event.type == pygame.QUIT:
                     self.running = False
 
@@ -998,6 +1008,14 @@ class App():
                 self.ai_options_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.ai_options_window, mouse_pos_virtual)
 
+            def _draw_keybinds():
+                if self.window_system.is_minimized("Keybinds"):
+                    return
+                # use instance method so rects and pressed flags are consistent
+                self.keybinds.draw_keybinds_panel(self.virtual_screen, self.keybinds_window.rect)
+                self.keybinds_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+                self.window_system.draw_minimize_button(self.virtual_screen, self.keybinds_window, mouse_pos_virtual) 
+
             def _draw_status():
                 if self.window_system.is_minimized("Status"):
                     return
@@ -1118,6 +1136,7 @@ class App():
                 "Power": _draw_power,
                 "CameraControls": _draw_camera_controls,
                 "AIOptions": _draw_ai_options,
+                "Keybinds": _draw_keybinds,
             }
 
             for key in self.window_system.z_order:
