@@ -304,6 +304,12 @@ class App():
             pygame.K_l: self.pressure_sensor_box,  # PRESSURE
         }
 
+        # vitesse de déplacement visuelle du cube (unités 3D)
+        self.cube_move_speed = 0.08  # laissé mais inutilisé
+
+        # vitesse de rotation manuelle du cube (degrés par frame)
+        self.cube_rotation_speed = 2.0
+
     def is_loading(self):
         return not self.loading_complete
 
@@ -539,7 +545,7 @@ class App():
         snap = load_layout_profile(profile_name)
         if snap:
             self._apply_layout_snapshot(snap)
-            set_last_layout_profile_name(profile_name)
+            set_last_profile_name(profile_name)
 
     def action_about(self):
         pass
@@ -740,6 +746,28 @@ class App():
             )
 
             self.battery.update()
+
+            # Désactiver les déplacements du cube
+            # (aucune translation, le cube reste fixe; on conserve uniquement la rotation via capteurs)
+            try:
+                dx = dy = dz = 0.0
+                speed = self.cube_move_speed
+                if self.keys[pygame.K_z]: dz += speed
+                if self.keys[pygame.K_s]: dz -= speed
+                if self.keys[pygame.K_q]: dx -= speed
+                if self.keys[pygame.K_d]: dx += speed
+                if self.keys[pygame.K_a]: dy += speed
+                if self.keys[pygame.K_e]: dy -= speed
+
+                if dx or dy or dz:
+                    self.cube.move(dx, dy, dz)
+                else:
+                    # Pas de déplacement: cacher toute flèche
+                    self.cube.movement_vector = [0.0, 0.0, 0.0]
+
+                # Supprime la décroissance (le cube ne bouge pas)
+            except Exception:
+                pass
 
             for box, (rx, ry) in self._status_rel_centers.items():
                 box.rect.center = (self.status_window.rect.x + rx, self.status_window.rect.y + ry)
@@ -1116,6 +1144,12 @@ class App():
                 self.cube.position = self.cube.rect.center
                 self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
                 self.cube_sprite_group.draw(self.virtual_screen)
+
+                label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
+                pad_label = 8
+                lx = camera_rect.x + pad_label
+                ly = camera_rect.y + pad_label
+                self.virtual_screen.blit(label, (lx, ly))
 
                 self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
