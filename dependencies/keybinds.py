@@ -8,7 +8,7 @@ class keybinds:
 	- minimal allocations in draw
 	"""
 	def __init__(self, base_width, base_height, font, lift=40):
-		self.rows = [["A", "Z", "E"], ["Q", "S", "D"]]
+		self.rows = ["A","Z","E","R"], ["Q", "S", "D","F"]
 		self.base_width = base_width
 		self.base_height = base_height
 		self.lift = lift

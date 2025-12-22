@@ -85,6 +85,17 @@ class App():
         self.roll = 0
         self.pitch = 0
         self.yaw = 0
+        
+        # Base des valeurs des capteurs (sans les modifications du clavier)
+        self.roll_sensor_base = 0
+        self.pitch_sensor_base = 0
+        self.yaw_sensor_base = 0
+        
+        # Deltas accumulés par les touches du clavier
+        self.roll_keyboard_delta = 0.0
+        self.pitch_keyboard_delta = 0.0
+        self.yaw_keyboard_delta = 0.0
+        
         self.vitesse_droit = 0
         self.vitesse_gauche = 0
         self.data_text = {}
@@ -130,7 +141,7 @@ class App():
         self.power_window = DraggableWindow(pygame.Rect(730, 630, 380, 120))
         self.camera_controls_window = DraggableWindow(pygame.Rect(1120, 10, 370, 110))
         self.ai_options_window = DraggableWindow(pygame.Rect(1120, 130, 370, 120))
-        self.keybinds_window = DraggableWindow(pygame.Rect(200, 200, 260, 150))
+        self.keybinds_window = DraggableWindow(pygame.Rect(200, 200, 360, 280))
 
         self.window_system = WindowSystem(self.font15, self.menu_bar)
         self.window_system.add_window("Camera", self.camera_window, kind="generic")
@@ -260,7 +271,7 @@ class App():
         self.window_system.set_default_layout("Power", (730, 630, 380, 120))
         self.window_system.set_default_layout("CameraControls", (1120, 10, 370, 110))
         self.window_system.set_default_layout("AIOptions", (1120, 130, 370, 120))
-        self.window_system.set_default_layout("Keybinds", (500, 500, 260, 150))
+        self.window_system.set_default_layout("Keybinds", (200, 200, 360, 280))
 
         self._refresh_view_menu()
         self._try_apply_last_layout_profile()
@@ -309,6 +320,19 @@ class App():
 
         # vitesse de rotation manuelle du cube (degrés par frame)
         self.cube_rotation_speed = 2.0
+
+    def _clamp_angle_pitch(self, angle: float) -> float:
+        """Normalise le pitch à la plage -180° à 180°"""
+        return self._clamp_angle_180(angle)
+
+    def _clamp_angle_180(self, angle: float) -> float:
+        """Normalise un angle à la plage -180° à 180°"""
+        angle = angle % 360
+        if angle > 180:
+            angle -= 360
+        elif angle < -180:
+            angle += 360
+        return angle
 
     def is_loading(self):
         return not self.loading_complete
@@ -545,11 +569,10 @@ class App():
         snap = load_layout_profile(profile_name)
         if snap:
             self._apply_layout_snapshot(snap)
-            set_last_profile_name(profile_name)
+            set_last_layout_profile_name(profile_name)
 
     def action_about(self):
-        pass
-                                                       
+        pass                                    
 
     def main(self):
         self.logger.info("Main loop started")
@@ -718,9 +741,9 @@ class App():
                 try:
                     with open(SENSOR_DATA_FILE, "r") as f:
                         sensor_data = json.load(f)
-                    self.roll = sensor_data.get('roll', self.roll)
-                    self.pitch = sensor_data.get('pitch', self.pitch)
-                    self.yaw = sensor_data.get('yaw', self.yaw)
+                    self.roll_sensor_base = sensor_data.get('roll', self.roll_sensor_base)
+                    self.pitch_sensor_base = sensor_data.get('pitch', self.pitch_sensor_base)
+                    self.yaw_sensor_base = sensor_data.get('yaw', self.yaw_sensor_base)
                 except (FileNotFoundError, json.JSONDecodeError):
                     pass
             elif self.data_handler:
@@ -728,10 +751,14 @@ class App():
                     data_text = self.data_handler.received_data
                     try:
                         if "AccX" in data_text.keys():
-                            self.roll = data_text.get("AngleRoll", 0) + 90
-                            self.pitch = data_text.get("AnglePitch", 0) + 90
-                            self.yaw = data_text.get("AnglaYaw", 0)
+                            self.roll_sensor_base = data_text.get("AngleRoll", 0) + 90
+                            self.pitch_sensor_base = data_text.get("AnglePitch", 0) + 90
+                            self.yaw_sensor_base = data_text.get("AnglaYaw", 0)
                     except: pass
+            
+            self.roll = self._clamp_angle_180(self.roll_sensor_base + self.roll_keyboard_delta)
+            self.pitch = self._clamp_angle_180(self.pitch_sensor_base + self.pitch_keyboard_delta)
+            self.yaw = self._clamp_angle_180(self.yaw_sensor_base + self.yaw_keyboard_delta)
             
             self.value.append([self.roll, self.pitch, self.yaw])
 
@@ -747,25 +774,50 @@ class App():
 
             self.battery.update()
 
-            # Désactiver les déplacements du cube
-            # (aucune translation, le cube reste fixe; on conserve uniquement la rotation via capteurs)
             try:
-                dx = dy = dz = 0.0
-                speed = self.cube_move_speed
-                if self.keys[pygame.K_z]: dz += speed
-                if self.keys[pygame.K_s]: dz -= speed
-                if self.keys[pygame.K_q]: dx -= speed
-                if self.keys[pygame.K_d]: dx += speed
-                if self.keys[pygame.K_a]: dy += speed
-                if self.keys[pygame.K_e]: dy -= speed
 
-                if dx or dy or dz:
-                    self.cube.move(dx, dy, dz)
-                else:
-                    # Pas de déplacement: cacher toute flèche
-                    self.cube.movement_vector = [0.0, 0.0, 0.0]
+                cube_roll_delta = 0.0
+                cube_yaw_delta = 0.0
+                cube_vertical_delta = 0.0
+                cube_height_delta = 0.0
 
-                # Supprime la décroissance (le cube ne bouge pas)
+                # Z/S: mouvement avant/arrière (n'affecte pas les angles)
+                if self.keys[pygame.K_z]:
+                    cube_vertical_delta += self.cube_rotation_speed
+                if self.keys[pygame.K_s]:
+                    cube_vertical_delta -= self.cube_rotation_speed
+
+                # Q/D: rotation roll (gauche/droite autour de l'axe X)
+                if self.keys[pygame.K_q]:
+                    cube_roll_delta -= self.cube_rotation_speed
+                if self.keys[pygame.K_d]:
+                    cube_roll_delta += self.cube_rotation_speed
+
+                # A/E: rotation yaw (rotation horizontale autour de l'axe Y)
+                if self.keys[pygame.K_a]:
+                    cube_yaw_delta -= self.cube_rotation_speed
+                if self.keys[pygame.K_e]:
+                    cube_yaw_delta += self.cube_rotation_speed
+
+                # R/F: mouvement vertical (n'affecte pas les angles)
+                if self.keys[pygame.K_r]:
+                    cube_height_delta += self.cube_rotation_speed
+                if self.keys[pygame.K_f]:
+                    cube_height_delta -= self.cube_rotation_speed
+
+                # Appliquer la rotation roll et yaw
+                self.cube.base_angle_x += cube_roll_delta
+                self.cube.base_angle_y += cube_yaw_delta
+                
+                self.cube.base_angle_x = self.cube.base_angle_x % 360
+                self.cube.base_angle_y = self.cube.base_angle_y % 360
+
+                self.cube.movement_vector = [cube_roll_delta, cube_vertical_delta, cube_height_delta]
+
+                # Accumuler les deltas uniquement pour le graphique
+                self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta + cube_roll_delta)
+                self.yaw_keyboard_delta = self._clamp_angle_180(self.yaw_keyboard_delta + cube_yaw_delta)
+
             except Exception:
                 pass
 
@@ -1142,7 +1194,9 @@ class App():
                 cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
                 self.cube.rect.center = (cx, cy)
                 self.cube.position = self.cube.rect.center
-                self.cube_sprite_group.update(self.roll, self.pitch, self.yaw)
+                # Afficher le cube avec rotation roll et pitch uniquement
+                # Le yaw ne s'affiche que dans le texte, pas dans la rotation 3D du cube
+                self.cube_sprite_group.update(self.roll, self.pitch, 0)
                 self.cube_sprite_group.draw(self.virtual_screen)
 
                 label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
