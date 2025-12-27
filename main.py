@@ -6,7 +6,7 @@ import json
 import logging
 import cv2
 import numpy as np
-import dependencies.Cube as Cube
+import dependencies.Cube3D as Cube3D_module
 from dependencies.Password import Special_button
 from dependencies.Graph_Pressure_Depth import Graphs_Main
 from dependencies.Graph_Angles import Graphs_Angles
@@ -282,8 +282,7 @@ class App():
             self.pressure_sensor_box
         )
 
-        self.cube = Cube.Cube(position=(1000, 100), size=0.5, fov=256, viewer_distance=4)
-        self.cube_sprite_group = pygame.sprite.Group(self.cube)
+        self.cube = Cube3D_module.Cube3D(screen_pos=(500, 300), size=65, viewer_distance=300)
 
         if logo:
             self.logo_amis_big = pygame.transform.scale(logo, (70, 70))
@@ -775,48 +774,36 @@ class App():
             self.battery.update()
 
             try:
-
-                cube_roll_delta = 0.0
-                cube_yaw_delta = 0.0
-                cube_vertical_delta = 0.0
-                cube_height_delta = 0.0
-
-                # Z/S: mouvement avant/arrière (n'affecte pas les angles)
-                if self.keys[pygame.K_z]:
-                    cube_vertical_delta += self.cube_rotation_speed
-                if self.keys[pygame.K_s]:
-                    cube_vertical_delta -= self.cube_rotation_speed
-
-                # Q/D: rotation roll (gauche/droite autour de l'axe X)
-                if self.keys[pygame.K_q]:
-                    cube_roll_delta -= self.cube_rotation_speed
-                if self.keys[pygame.K_d]:
-                    cube_roll_delta += self.cube_rotation_speed
-
-                # A/E: rotation yaw (rotation horizontale autour de l'axe Y)
-                if self.keys[pygame.K_a]:
-                    cube_yaw_delta -= self.cube_rotation_speed
-                if self.keys[pygame.K_e]:
-                    cube_yaw_delta += self.cube_rotation_speed
-
-                # R/F: mouvement vertical (n'affecte pas les angles)
+                # Contrôles clavier pour les rotations du cube
+                # R/F: modifier le pitch (rotation verticale)
                 if self.keys[pygame.K_r]:
-                    cube_height_delta += self.cube_rotation_speed
+                    self.pitch_keyboard_delta += self.cube_rotation_speed
                 if self.keys[pygame.K_f]:
-                    cube_height_delta -= self.cube_rotation_speed
-
-                # Appliquer la rotation roll et yaw
-                self.cube.base_angle_x += cube_roll_delta
-                self.cube.base_angle_y += cube_yaw_delta
+                    self.pitch_keyboard_delta -= self.cube_rotation_speed
                 
-                self.cube.base_angle_x = self.cube.base_angle_x % 360
-                self.cube.base_angle_y = self.cube.base_angle_y % 360
-
-                self.cube.movement_vector = [cube_roll_delta, cube_vertical_delta, cube_height_delta]
-
-                # Accumuler les deltas uniquement pour le graphique
-                self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta + cube_roll_delta)
-                self.yaw_keyboard_delta = self._clamp_angle_180(self.yaw_keyboard_delta + cube_yaw_delta)
+                # Q/D: modifier le yaw (rotation horizontale)
+                if self.keys[pygame.K_a]:
+                    self.yaw_keyboard_delta -= self.cube_rotation_speed
+                if self.keys[pygame.K_e]:
+                    self.yaw_keyboard_delta += self.cube_rotation_speed
+                
+                # A/E: modifier le roll (gauche/droite)
+                if self.keys[pygame.K_q]:
+                    self.roll_keyboard_delta -= self.cube_rotation_speed
+                if self.keys[pygame.K_d]:
+                    self.roll_keyboard_delta += self.cube_rotation_speed
+                
+                # Normaliser les angles à [-180, 180]
+                self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta)
+                self.pitch_keyboard_delta = self._clamp_angle_180(self.pitch_keyboard_delta)
+                self.yaw_keyboard_delta = self._clamp_angle_180(self.yaw_keyboard_delta)
+                
+                # Mettre à jour le cube avec les angles courants (yaw, pitch, roll)
+                self.cube.update(
+                    yaw=self.yaw,
+                    pitch=self.pitch,
+                    roll=self.roll,
+                )
 
             except Exception:
                 pass
@@ -1113,6 +1100,7 @@ class App():
                 camera_rect = self.camera_window.rect
                 pygame.draw.rect(self.virtual_screen, (0, 0, 0), camera_rect)
                 pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
+                
                 if frame is not None:
                     try:
                         frame_bgr = np.ascontiguousarray(frame)
@@ -1192,12 +1180,9 @@ class App():
                 cy = camera_rect.y + max(70, int(camera_rect.h * 0.18))
                 cx = max(camera_rect.x + pad, min(cx, camera_rect.right - pad))
                 cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
-                self.cube.rect.center = (cx, cy)
-                self.cube.position = self.cube.rect.center
-                # Afficher le cube avec rotation roll et pitch uniquement
-                # Le yaw ne s'affiche que dans le texte, pas dans la rotation 3D du cube
-                self.cube_sprite_group.update(self.roll, self.pitch, 0)
-                self.cube_sprite_group.draw(self.virtual_screen)
+                
+                self.cube.set_screen_pos(cx, cy)
+                self.cube.draw(self.virtual_screen)
 
                 label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
                 pad_label = 8
