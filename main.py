@@ -6,7 +6,7 @@ import json
 import logging
 import cv2
 import numpy as np
-import dependencies.Cube3D as Cube3D_module
+import dependencies.Cube as Cube
 from dependencies.Password import Special_button
 from dependencies.Graph_Pressure_Depth import Graphs_Main
 from dependencies.Graph_Angles import Graphs_Angles
@@ -85,13 +85,9 @@ class App():
         self.roll = 0
         self.pitch = 0
         self.yaw = 0
-        
-        # Base des valeurs des capteurs (sans les modifications du clavier)
         self.roll_sensor_base = 0
         self.pitch_sensor_base = 0
         self.yaw_sensor_base = 0
-        
-        # Deltas accumulés par les touches du clavier
         self.roll_keyboard_delta = 0.0
         self.pitch_keyboard_delta = 0.0
         self.yaw_keyboard_delta = 0.0
@@ -234,18 +230,6 @@ class App():
             cx, cy = box.rect.center
             self._status_rel_centers[box] = (cx - self.status_window.rect.x, cy - self.status_window.rect.y)
 
-        BW, BH = 1500, 10
-        self.lineh1 = DecorativeBox(750, 495, BW, BH, self.font15, YELLOW, GRAY, '')
-        self.lineh2 = DecorativeBox(750, 745, BW, BH, self.font, YELLOW, GRAY, '')
-        self.lineh3 = DecorativeBox(750, 5, BW, BH, self.font, YELLOW, GRAY, '')
-        self.lineh4 = DecorativeBox(195, 385, 370, BH, self.font, GRAY, GRAY, '')
-        self.lineh5 = DecorativeBox(1305, 385, 370, BH, self.font, GRAY, GRAY, '')
-
-        self.linev1 = DecorativeBox(1115, 375, BH, 750, self.font, GRAY, GRAY, "")
-        self.linev2 = DecorativeBox(1495, 375, BH, 750, self.font, GRAY, GRAY, "")
-        self.linev3 = DecorativeBox(5, 375, BH, 750, self.font, GRAY, GRAY, "")
-        self.linev4 = DecorativeBox(385, 375, BH, 750, self.font, GRAY, GRAY, "")
-
         self.button_color = (75, 75, 75)
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
@@ -282,7 +266,7 @@ class App():
             self.pressure_sensor_box
         )
 
-        self.cube = Cube3D_module.Cube3D(screen_pos=(500, 300), size=65, viewer_distance=300)
+        self.cube = Cube.Cube(screen_pos=(500, 300), size=65, viewer_distance=300)
 
         if logo:
             self.logo_amis_big = pygame.transform.scale(logo, (70, 70))
@@ -314,15 +298,8 @@ class App():
             pygame.K_l: self.pressure_sensor_box,  # PRESSURE
         }
 
-        # vitesse de déplacement visuelle du cube (unités 3D)
-        self.cube_move_speed = 0.08  # laissé mais inutilisé
-
         # vitesse de rotation manuelle du cube (degrés par frame)
         self.cube_rotation_speed = 2.0
-
-    def _clamp_angle_pitch(self, angle: float) -> float:
-        """Normalise le pitch à la plage -180° à 180°"""
-        return self._clamp_angle_180(angle)
 
     def _clamp_angle_180(self, angle: float) -> float:
         """Normalise un angle à la plage -180° à 180°"""

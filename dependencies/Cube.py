@@ -3,7 +3,7 @@ import numpy as np
 import pygame
 
 
-class Cube3D:
+class Cube:
     """
     Cube 3D avec rotations basées sur Yaw (Z), Pitch (X), Roll (Y).
     Utilise des matrices de rotation pour transformer les points 3D en 2D.
@@ -20,12 +20,10 @@ class Cube3D:
         self.size = size
         self.viewer_distance = viewer_distance
         
-        # Angles en degrés
-        self.yaw = 0.0    # Rotation autour de Z (horizontal)
-        self.pitch = 0.0  # Rotation autour de X (avant/arrière)
-        self.roll = 0.0   # Rotation autour de Y (gauche/droite)
+        self.yaw = 0.0    
+        self.pitch = 0.0  
+        self.roll = 0.0   
         
-        # Sommets du cube en coordonnées 3D (centrés à l'origine)
         self.vertices_local = np.array([
             [-size/2, -size/2, -size/2],  # 0
             [ size/2, -size/2, -size/2],  # 1
@@ -44,8 +42,10 @@ class Cube3D:
             (0, 4), (1, 5), (2, 6), (3, 7),
         ]
         
-        self.edge_color = (100, 150, 255)
-        self.vertex_color = (200, 200, 255)
+        self.edge_color = (255, 255, 255)
+        self.vertex_color = (255, 0, 0)
+        self.front_face_edge_color = (0, 0, 180)  
+        self.front_face_edges = [(0, 1), (1, 2), (2, 3), (3, 0)]
     
     def _rotation_matrix_x(self, angle_deg):
         """Matrice de rotation autour de l'axe X (Pitch)"""
@@ -91,7 +91,6 @@ class Cube3D:
         return (screen_x, screen_y), depth
     
     def get_projected_vertices(self):
-        """Retourne les sommets projetés et leurs profondeurs."""
         R_yaw = self._rotation_matrix_y(self.yaw)
         R_pitch = self._rotation_matrix_x(self.pitch)
         R_roll = self._rotation_matrix_z(self.roll)
@@ -119,7 +118,7 @@ class Cube3D:
         vertices_2d, depths = self.get_projected_vertices()
         
         edges_with_depth = []
-        for i, edge in enumerate(self.edges):
+        for i,edge in enumerate(self.edges):
             v1_idx, v2_idx = edge
             avg_depth = (depths[v1_idx] + depths[v2_idx]) / 2
             edges_with_depth.append((avg_depth, edge))
@@ -129,10 +128,9 @@ class Cube3D:
         for _, (v1_idx, v2_idx) in edges_with_depth:
             p1 = vertices_2d[v1_idx]
             p2 = vertices_2d[v2_idx]
-            pygame.draw.line(surface, self.edge_color, p1, p2, 2)
-        
-        for vertex_2d in vertices_2d.values():
-            pygame.draw.circle(surface, self.vertex_color, (int(vertex_2d[0]), int(vertex_2d[1])), 3)
+            # Colore les arêtes de la face avant en bleu foncé
+            edge_color = self.front_face_edge_color if (v1_idx, v2_idx) in self.front_face_edges else self.edge_color
+            pygame.draw.line(surface, edge_color, p1, p2, 2)
     
     def set_screen_pos(self, x, y):
         """Définit la position du cube sur l'écran"""
