@@ -20,7 +20,7 @@ def draw_thrusters_panel(
 ) -> None:
     draw_panel_bg(surface, rect)
 
-    title = font15.render("THRUSTERS / COMMANDES MOTEURS", True, (240, 240, 240))
+    title = font15.render("THRUSTERS / ENGINE COMMANDS", True, (240, 240, 240))
     surface.blit(title, (rect.x + 20, rect.y + 12))
 
                                              

@@ -104,9 +104,9 @@ def show_start_screen(starting_screen, logo, starting_font_button):
             title_font = pygame.font.SysFont('Century Schoolbook', max(30, title_font_size), bold=True)
             text_surf = title_font.render("AQUAMIS", True, BLUE)
             
-            subtitle_font_size = int(width * 0.015)
+            subtitle_font_size = int(width * 0.02)
             subtitle_font = pygame.font.SysFont('Century Schoolbook', max(15, subtitle_font_size))
-            subtitle_surf = subtitle_font.render("Interface of Control", True, TEXT_SECONDARY)
+            subtitle_surf = subtitle_font.render("Interface of Control", True, (255, 255, 0))
             
             button_font = load_brand_font(max(16, int(24 * scale)), bold=True)
             
@@ -147,7 +147,7 @@ def show_start_screen(starting_screen, logo, starting_font_button):
         text_rect = text_surf.get_rect(center=(text_x, text_y))
         starting_screen.blit(text_surf, text_rect)
         
-        subtitle_offset = int(height * 0.06)
+        subtitle_offset = int(height * 0.10)
         sub_rect = subtitle_surf.get_rect(center=(text_x, text_y + subtitle_offset))
         starting_screen.blit(subtitle_surf, sub_rect)
         

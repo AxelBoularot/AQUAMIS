@@ -32,8 +32,8 @@ from dependencies.WindowLayoutProfiles import (
     set_last_profile_name as set_last_layout_profile_name,
     normalize_profile_name,
 )
-import dependencies.start_sreen as start_screen_module
-from dependencies.start_sreen import show_start_screen, SENSOR_DATA_FILE
+import dependencies.StartScreen as start_screen_module
+from dependencies.StartScreen import show_start_screen, SENSOR_DATA_FILE
 from dependencies.Logsys import LogSystem, UILogHandler
 from dependencies.AI_Config import load_yolo_model
 from dependencies.Dashboard import Dashboard

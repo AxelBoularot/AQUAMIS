@@ -51,7 +51,7 @@ def draw_temp_panel(surface: pygame.Surface, rect: pygame.Rect, font15, temp_c: 
     pad_x = int(14 * scale)
     title = _scale_surf(font15.render("ELECTRONICS", True, (240, 240, 240)), scale)
     surface.blit(title, (rect.x + pad_x, rect.y + int(10 * scale)))
-    title2 = _scale_surf(font15.render("TEMP", True, (240, 240, 240)), scale)
+    title2 = _scale_surf(font15.render("TEMPERATURE", True, (240, 240, 240)), scale)
     surface.blit(title2, (rect.x + pad_x, rect.y + int(28 * scale)))
 
     color = (240, 240, 240)
