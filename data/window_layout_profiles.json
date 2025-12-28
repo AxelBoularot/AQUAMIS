@@ -335,10 +335,10 @@
           "rect": [
             10,
             100,
-            370,
-            200
+            637,
+            416
           ],
-          "min": true
+          "min": false
         },
         "Signal": {
           "rect": [
@@ -452,10 +452,10 @@
         "Ballast",
         "Speed",
         "Power",
-        "Logs",
         "PressureDepth",
         "Camera",
-        "Keybinds"
+        "Keybinds",
+        "Logs"
       ]
     }
   },

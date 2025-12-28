@@ -268,6 +268,25 @@ class App():
 
         self.cube = Cube.Cube(screen_pos=(500, 300), size=65, viewer_distance=300)
 
+        # État précédent pour détecter les changements de mouvement
+        self._prev_cube_movement = 0
+        self._prev_roll = 0.0
+        self._prev_pitch = 0.0
+        self._prev_yaw = 0.0
+        self._movement_start_time = 0
+        self._rotation_threshold = 1.0  # Seuil minimum pour logger une rotation (degrés)
+        self._last_logged_angles = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+        
+        # Suivi des touches de rotation pour détection du relâchement
+        self._prev_rotation_keys = {
+            pygame.K_r: False,  # PITCH +
+            pygame.K_f: False,  # PITCH -
+            pygame.K_a: False,  # YAW -
+            pygame.K_e: False,  # YAW +
+            pygame.K_q: False,  # ROLL -
+            pygame.K_d: False,  # ROLL +
+        }
+
         if logo:
             self.logo_amis_big = pygame.transform.scale(logo, (70, 70))
             self.logo_amis_small = pygame.transform.scale(logo, (60, 60))
@@ -300,6 +319,9 @@ class App():
 
         # vitesse de rotation manuelle du cube (degrés par frame)
         self.cube_rotation_speed = 2.0
+        
+        # État du mouvement du cube (avance/recule)
+        self.cube_movement = 0  # 0: immobile, 1: avance (Z), -1: recule (S)
 
     def _clamp_angle_180(self, angle: float) -> float:
         """Normalise un angle à la plage -180° à 180°"""
@@ -550,6 +572,72 @@ class App():
     def action_about(self):
         pass                                    
 
+    def _log_cube_movement(self) -> None:
+        """Log les changements de mouvement et rotation du cube"""
+        current_time = time.time()
+        
+        # Détection du changement de mouvement (avance/recule)
+        if self.cube_movement != self._prev_cube_movement:
+            if self.cube_movement == 1:
+                self._movement_start_time = current_time
+                if hasattr(self, "logger"):
+                    self.logger.info("AMIS: MOVING FORWARD")
+            elif self.cube_movement == -1:
+                self._movement_start_time = current_time
+                if hasattr(self, "logger"):
+                    self.logger.info("AMIS: MOVING BACKWARD")
+            elif self._prev_cube_movement != 0:
+                # Mouvement arrêté
+                if hasattr(self, "logger"):
+                    duration_ms = int((current_time - self._movement_start_time) * 1000)
+                    direction = "FORWARD" if self._prev_cube_movement == 1 else "BACKWARD"
+                    self.logger.info(f"AMIS: Stopped after {direction} ({duration_ms} ms)")
+            
+            self._prev_cube_movement = self.cube_movement
+        
+        # Vérification des touches de rotation actuellement pressées
+        current_rotation_keys = {
+            pygame.K_r: self.keys[pygame.K_r],
+            pygame.K_f: self.keys[pygame.K_f],
+            pygame.K_a: self.keys[pygame.K_a],
+            pygame.K_e: self.keys[pygame.K_e],
+            pygame.K_q: self.keys[pygame.K_q],
+            pygame.K_d: self.keys[pygame.K_d],
+        }
+        
+        # Détection du relâchement de touche (transition de True à False)
+        key_released = any(
+            self._prev_rotation_keys[k] and not current_rotation_keys[k]
+            for k in self._prev_rotation_keys
+        )
+        
+        # Log les angles uniquement si une touche de rotation a été relâchée
+        if key_released:
+            roll_delta = abs(self.roll - self._last_logged_angles["roll"])
+            pitch_delta = abs(self.pitch - self._last_logged_angles["pitch"])
+            yaw_delta = abs(self.yaw - self._last_logged_angles["yaw"])
+            
+            # Log Roll si changement significatif
+            if roll_delta >= self._rotation_threshold:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"AMIS: ROLL {self.roll:.1f}° (Δ {roll_delta:.1f}°)")
+                self._last_logged_angles["roll"] = self.roll
+            
+            # Log Pitch si changement significatif
+            if pitch_delta >= self._rotation_threshold:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"AMIS: PITCH {self.pitch:.1f}° (Δ {pitch_delta:.1f}°)")
+                self._last_logged_angles["pitch"] = self.pitch
+            
+            # Log Yaw si changement significatif
+            if yaw_delta >= self._rotation_threshold:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"AMIS: YAW {self.yaw:.1f}° (Δ {yaw_delta:.1f}°)")
+                self._last_logged_angles["yaw"] = self.yaw
+        
+        # Mise à jour de l'état précédent des touches
+        self._prev_rotation_keys = current_rotation_keys
+
     def main(self):
         self.logger.info("Main loop started")
         while self.running:
@@ -770,6 +858,14 @@ class App():
                 if self.keys[pygame.K_d]:
                     self.roll_keyboard_delta += self.cube_rotation_speed
                 
+                # Z/S: mouvement avant/arrière du cube
+                if self.keys[pygame.K_z]:
+                    self.cube_movement = 1  # Avance
+                elif self.keys[pygame.K_s]:
+                    self.cube_movement = -1  # Recule
+                else:
+                    self.cube_movement = 0  # Immobile
+                
                 # Normaliser les angles à [-180, 180]
                 self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta)
                 self.pitch_keyboard_delta = self._clamp_angle_180(self.pitch_keyboard_delta)
@@ -781,6 +877,9 @@ class App():
                     pitch=self.pitch,
                     roll=self.roll,
                 )
+                
+                # Log les mouvements du cube
+                self._log_cube_movement()
 
             except Exception:
                 pass
@@ -1166,6 +1265,24 @@ class App():
                 lx = camera_rect.x + pad_label
                 ly = camera_rect.y + pad_label
                 self.virtual_screen.blit(label, (lx, ly))
+
+                # Indicateur de mouvement du cube
+                movement_text = ""
+                movement_color = WHITE
+                if self.cube_movement == 1:
+                    movement_text = "▲ FORWARD"
+                    movement_color = (0, 255, 0)
+                elif self.cube_movement == -1:
+                    movement_text = "▼ BACKWARD"
+                    movement_color = (255, 100, 0)
+                else:
+                    movement_text = "● STOPPED"
+                    movement_color = (150, 150, 150)
+                
+                movement_surf = self.font15.render(movement_text, True, movement_color)
+                movement_x = lx
+                movement_y = ly + label.get_height() + 4
+                self.virtual_screen.blit(movement_surf, (movement_x, movement_y))
 
                 self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
