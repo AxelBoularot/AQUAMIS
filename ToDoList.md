@@ -4,27 +4,10 @@ Reprendre le code de l’année précédente
 
 § Ajouter des commentaire pour rendre le code déchiffrable rapidement
 
-§ Création de librairies pour alléger le code principal
-
 o Evolution de l’interface de controle
 
-§ Affichage du niveau de batteries en temps réel
-
-§ Graphe représentant la position d’Aqu’Amis sur 3 axes
-
 § Indicateur du niveau de batterie (0 à 100%) et estimation du temps de
-
-
-navigation restante
-
-§ Indicateur de la force de signal de communication
-
-§ Indicateur d’usage des ballasts (0 à 100%)
-
-§ Indicateur de vitesse d’Aquamis (Nœud ou Km/h via un switch)
-
-§ Indicateur de Pression (en Bar) et de profondeur (en mètre)
-
++
 o Fonctionnalités avancés
 
 § Proposer et développer des actions réalisées par Aqu’Amis lors de la
@@ -42,4 +25,3 @@ signal)
 o Fourniture d’un Planning détaillé des activités (enchainement des tâches, priorisation,
 identification du chemin critique,..)
 
-Faire un système de notification dans l'interface

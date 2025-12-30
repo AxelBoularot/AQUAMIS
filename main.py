@@ -72,6 +72,7 @@ starting_font_button = load_brand_font(20, bold=True)
 class App():
     def __init__(self):
         self.running = True
+        self.started = False
 
         self.loading_complete = False
         self.loading_progress = 0
@@ -103,9 +104,9 @@ class App():
         self.dashboard = Dashboard(self.font, self.font15, self.font18)
 
         self._base_menu_items = [
-            ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data), ("Exit", self.action_exit)]),
+            ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data)]),
             ("Start", self.action_start, (0, 150, 0)),
-            ("Stop", self.action_emergency_stop, (150, 0, 0)),
+            ("Stop", self.action_exit, (150, 0, 0)),
             ("Views", []),
             (
                 "Tools",
@@ -233,8 +234,7 @@ class App():
         self.button_color = (75, 75, 75)
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
-        self.button_emergency_stop = Special_button(20, 510, 350, 110, 'EMERGENCY STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.button_action, "EMERGENCY STOP HAS BEEN TRIGGERED")
-
+    
         self.layout_profile_prompt = Special_button(0, 0, 1, 1, '', self.font, WHITE, (0, 0, 0), (0, 0, 0), starting_screen)
         self.switch_com = Button(20, 400, 350, 80, 'SWITCH COM', self.font, WHITE, self.button_color, self.button_action, BCP, "Comms have been switched!")
 
@@ -432,17 +432,18 @@ class App():
         print("\nAction Triggered")
 
     def action_start(self):
-        self.logger.info("System Started")
-        print("\nSystem Started")
+        if self.started == False:
+            self.started = True
+            self.logger.info("System Started")
+            print("\nSystem Started")
+        else:
+            self.logger.info("System is already Running")
+            print("\nSystem is already Running")
 
     def action_stop(self):
         self.but_stop()                 
         self.logger.warning("System Stopped")
         print("\nSystem Stopped")
-
-    def action_emergency_stop(self):
-        self.button_emergency_stop.emergency_trigger()
-        self.logger.warning("Emergency Stop Requested")
 
     def action_set_log_filter(self, level_name: str) -> None:
         self.log_system.set_min_level(level_name)
@@ -696,19 +697,10 @@ class App():
                     if event.key == pygame.K_F11:
                         pygame.display.toggle_fullscreen()
                     self.button_stop.handle_event_stop(event)
-                    result_emergency = self.button_emergency_stop.handle_event_emergency(event)
-
-                    if result_emergency == "emergency_stop":
-                        if self.socket_client and hasattr(self.socket_client, 'running') and self.socket_client.running:
-                            self.socket_client.close()
-                        if self.video_receiver:
-                            self.video_receiver.running = False
-                        if self.data_handler:
-                            self.data_handler.running = False
+                    
                     self._update_status_boxes(event.key)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if self.button_emergency_stop.show_emergency_input: continue
-
+            
                     mouse_pos = convert_mouse_pos_with_menu(
                         pygame.mouse.get_pos(),
                         self.screen,
@@ -1385,9 +1377,6 @@ class App():
             self.screen.blit(scaled_v_screen, (x_offset, y_offset))
 
             self.menu_bar.draw_dropdown(self.screen)
-
-            if self.button_emergency_stop.show_emergency_input:
-                self.button_emergency_stop.draw(self.screen, self.font)
 
             if self.layout_profile_prompt.show_text_prompt_input:
                 self.layout_profile_prompt.draw(self.screen, self.font)
