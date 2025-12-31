@@ -1,5 +1,5 @@
 import pygame
-from dependencies.Variable import BLUE, TEXT_SECONDARY, WHITE
+from dependencies.Variable import BLUE, WHITE
 from dependencies.Button import draw_modern_button
 from dependencies.Font import load_brand_font
 from dependencies.ModernParticle import ModernParticle
@@ -14,9 +14,6 @@ import cv2
 import time
 from dependencies.Scaling import get_scaling_factors
 from dependencies.IP_Config import ip_modal_handle_event, ip_modal_draw
-from dependencies.Loading_Screen import show_loading_screen
-from dependencies.Variable import BASE_WIDTH, BASE_HEIGHT
-
                                                 
 particles = [ModernParticle() for _ in range(200)]
 
