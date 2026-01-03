@@ -58,6 +58,8 @@ import queue
 
 model, device = load_yolo_model()
 
+model.set_classes(['person',"chair"])
+
 pygame.init()
 pygame.display.set_caption("AQUAMIS' Interface of Control")
 try:

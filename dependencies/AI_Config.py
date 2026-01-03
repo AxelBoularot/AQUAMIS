@@ -44,7 +44,7 @@ def _choose_device() -> str:
         return "cpu"
 
 
-def load_yolo_model(model_path: str = "object_detection_lib/yolo11n.pt"):
+"""def load_yolo_model(model_path: str = "object_detection_lib/yolo11n.pt"):
     device = _choose_device()
     print(f"Using device: {device}")
 
@@ -61,6 +61,70 @@ def load_yolo_model(model_path: str = "object_detection_lib/yolo11n.pt"):
                 else:
                     raise
         return model, device
+    except Exception as e:
+        print(f"Error loading YOLO model: {e}")
+        return None, device
+"""
+# --- NOUVELLE CLASSE POUR GÉRER YOLO WORLD ---
+class YOLOWorldWrapper:
+    def __init__(self, model_path: str, device: str):
+        self.model = YOLO(model_path)
+        self.device = device
+        
+        # Déplacer sur le bon device
+        if self.device != "cpu":
+            try:
+                self.model.to(self.device)
+            except RuntimeError as e:
+                if _is_no_kernel_image_error(e):
+                    print("CUDA incompatible fallback CPU")
+                    self.device = "cpu"
+                    self.model.to("cpu")
+                else:
+                    raise
+        
+        # Initialisation par défaut (important pour éviter un état vide)
+        # Si c'est un modèle standard, cette ligne sera ignorée sans crash
+        try:
+            self.model.set_classes(["object"])
+        except Exception:
+            pass # Ce n'est pas un modèle World, on ignore
+
+    def set_classes(self, classes_list: list):
+        """Permet de changer les objets détectés à la volée"""
+        try:
+            # Nettoyage de la liste
+            clean_list = [c.strip() for c in classes_list if c.strip()]
+            if clean_list:
+                self.model.set_classes(clean_list)
+                print(f"-> Modèle mis à jour pour détecter : {clean_list}")
+        except Exception as e:
+            print(f"Erreur lors du changement de classes (Modèle non compatible ?) : {e}")
+
+    # On redirige les appels standards vers le vrai modèle YOLO
+    def track(self, source, **kwargs):
+        return self.model.track(source, **kwargs)
+    
+    def predict(self, source, **kwargs):
+        return self.model.predict(source, **kwargs)
+    
+    @property
+    def names(self):
+        return self.model.names
+
+
+# --- LOAD MODIFIÉ ---
+# Par défaut on charge un modèle 'world' (plus petit = plus rapide sur CPU)
+def load_yolo_model(model_path: str = "object_detection_lib/yolov8s-world.pt"):
+    device = _choose_device()
+    print(f"Using device: {device}")
+
+    try:
+        # On retourne notre Wrapper au lieu de l'objet brut
+        # Cela rend 'model.set_classes()' disponible dans ton App
+        model_wrapper = YOLOWorldWrapper(model_path, device)
+        return model_wrapper, model_wrapper.device
+        
     except Exception as e:
         print(f"Error loading YOLO model: {e}")
         return None, device
