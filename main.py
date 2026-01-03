@@ -1394,6 +1394,55 @@ class App():
                 },
             )
 
+            # Si l'écran de confirmation d'arrêt est actif, on le dessine
+            # SUR la surface virtuelle (BASE_WIDTH x BASE_HEIGHT) pour que
+            # les rects de clic correspondent aux coordonnées virtuelles.
+            if self.stop_confirmation_active:
+                overlay = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.virtual_screen.blit(overlay, (0, 0))
+
+                box_w = min(600, BASE_WIDTH - 120)
+                box_h = 180
+                box_x = (BASE_WIDTH - box_w) // 2
+                box_y = (BASE_HEIGHT - box_h) // 2
+
+                # ombre
+                shadow = pygame.Surface((box_w + 12, box_h + 12), pygame.SRCALPHA)
+                pygame.draw.rect(shadow, (0, 0, 0, 60), shadow.get_rect(), border_radius=16)
+                self.virtual_screen.blit(shadow, (box_x - 6, box_y - 6))
+
+                # boite rouge principale
+                dialog = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                pygame.draw.rect(dialog, (139, 0, 0), dialog.get_rect(), border_radius=14)
+                pygame.draw.rect(dialog, (200, 50, 50), dialog.get_rect(), 3, border_radius=14)
+
+                title_surf = self.font18.render("Do you want to stop AQUAMIS?", True, (255, 220, 220))
+                dialog.blit(title_surf, (20, 20))
+
+                # boutons virtuels (coordonnées sur la surface virtuelle)
+                btn_w, btn_h = 160, 48
+                gap = 24
+                confirm_rect_v = pygame.Rect(box_x + (box_w // 2) - btn_w - gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
+                cancel_rect_v = pygame.Rect(box_x + (box_w // 2) + gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
+
+                # Dessiner boutons dans la surface principale (pour avoir coins arrondis)
+                pygame.draw.rect(self.virtual_screen, (200, 0, 0), confirm_rect_v, border_radius=10)
+                pygame.draw.rect(self.virtual_screen, (255, 120, 120), confirm_rect_v, 2, border_radius=10)
+                confirm_lbl = self.font15.render("CONFIRM", True, WHITE)
+                self.virtual_screen.blit(confirm_lbl, (confirm_rect_v.centerx - confirm_lbl.get_width() // 2,
+                                                       confirm_rect_v.centery - confirm_lbl.get_height() // 2))
+
+                pygame.draw.rect(self.virtual_screen, (75, 75, 75), cancel_rect_v, border_radius=10)
+                pygame.draw.rect(self.virtual_screen, (150, 150, 150), cancel_rect_v, 2, border_radius=10)
+                cancel_lbl = self.font15.render("CANCEL", True, WHITE)
+                self.virtual_screen.blit(cancel_lbl, (cancel_rect_v.centerx - cancel_lbl.get_width() // 2,
+                                                      cancel_rect_v.centery - cancel_lbl.get_height() // 2))
+
+                # Mettre à jour les rects des boutons utilisés pour la détection de clic
+                self.button_confirm.rect = confirm_rect_v
+                self.button_cancel.rect = cancel_rect_v
+
             scale, x_offset, y_offset, new_w, new_h = compute_transform_with_menu(
                 self.screen,
                 menu_height,
@@ -1416,37 +1465,6 @@ class App():
                 fade.fill(BLACK)
                 fade.set_alpha(self.fade_in_alpha)
                 self.screen.blit(fade, (0,0))
-
-            # Afficher les boutons de confirmation s'ils sont actifs (AU PREMIER PLAN)
-            if self.stop_confirmation_active:
-                # Overlay semi-transparent
-                overlay = pygame.Surface(current_size, pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
-                self.screen.blit(overlay, (0, 0))
-                
-                # Afficher un texte de confirmation
-                confirm_text = self.font18.render("Do you want to stop AQUAMIS?", True, WHITE)
-                text_x = current_size[0] // 2 - confirm_text.get_width() // 2
-                text_y = 300
-                self.screen.blit(confirm_text, (text_x, text_y))
-                
-                # Bouton CONFIRM
-                confirm_rect = pygame.Rect(current_size[0] // 2 - 110, 400, 100, 50)
-                pygame.draw.rect(self.screen, (200, 0, 0), confirm_rect, border_radius=8)
-                pygame.draw.rect(self.screen, (255, 100, 100), confirm_rect, 2, border_radius=8)
-                confirm_lbl = self.font15.render("CONFIRM", True, WHITE)
-                self.screen.blit(confirm_lbl, (confirm_rect.centerx - confirm_lbl.get_width() // 2, 
-                                               confirm_rect.centery - confirm_lbl.get_height() // 2))
-                self.button_confirm.rect = confirm_rect
-                
-                # Bouton CANCEL
-                cancel_rect = pygame.Rect(current_size[0] // 2 + 10, 400, 100, 50)
-                pygame.draw.rect(self.screen, (75, 75, 75), cancel_rect, border_radius=8)
-                pygame.draw.rect(self.screen, (150, 150, 150), cancel_rect, 2, border_radius=8)
-                cancel_lbl = self.font15.render("CANCEL", True, WHITE)
-                self.screen.blit(cancel_lbl, (cancel_rect.centerx - cancel_lbl.get_width() // 2, 
-                                              cancel_rect.centery - cancel_lbl.get_height() // 2))
-                self.button_cancel.rect = cancel_rect
 
             self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
             try:
