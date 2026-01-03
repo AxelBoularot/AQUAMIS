@@ -306,10 +306,10 @@
       "windows": {
         "Camera": {
           "rect": [
-            369,
-            5,
-            720,
-            480
+            404,
+            35,
+            708,
+            546
           ],
           "min": false
         },
@@ -333,12 +333,12 @@
         },
         "Logs": {
           "rect": [
-            10,
-            100,
-            370,
-            200
+            1,
+            192,
+            398,
+            414
           ],
-          "min": true
+          "min": false
         },
         "Signal": {
           "rect": [
@@ -383,7 +383,7 @@
             160,
             160
           ],
-          "min": false
+          "min": true
         },
         "Temp": {
           "rect": [
@@ -392,7 +392,7 @@
             160,
             160
           ],
-          "min": false
+          "min": true
         },
         "Thrusters": {
           "rect": [
@@ -432,8 +432,8 @@
         },
         "Keybinds": {
           "rect": [
-            241,
-            535,
+            823,
+            572,
             260,
             150
           ],
@@ -442,20 +442,20 @@
       },
       "z_order": [
         "Status",
-        "Temp",
-        "Thrusters",
         "Battery",
         "CameraControls",
         "AIOptions",
-        "Graphs",
         "Signal",
         "Ballast",
         "Speed",
         "Power",
-        "Logs",
         "PressureDepth",
-        "Camera",
-        "Keybinds"
+        "Temp",
+        "Keybinds",
+        "Logs",
+        "Graphs",
+        "Thrusters",
+        "Camera"
       ]
     }
   },

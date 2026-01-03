@@ -72,6 +72,7 @@ starting_font_button = load_brand_font(20, bold=True)
 class App():
     def __init__(self):
         self.running = True
+        self.started = False
 
         self.loading_complete = False
         self.loading_progress = 0
@@ -103,9 +104,9 @@ class App():
         self.dashboard = Dashboard(self.font, self.font15, self.font18)
 
         self._base_menu_items = [
-            ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data), ("Exit", self.action_exit)]),
+            ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data)]),
             ("Start", self.action_start, (0, 150, 0)),
-            ("Stop", self.action_emergency_stop, (150, 0, 0)),
+            ("Stop", self.but_stop, (150, 0, 0)),
             ("Views", []),
             (
                 "Tools",
@@ -233,7 +234,11 @@ class App():
         self.button_color = (75, 75, 75)
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
-        self.button_emergency_stop = Special_button(20, 510, 350, 110, 'EMERGENCY STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.button_action, "EMERGENCY STOP HAS BEEN TRIGGERED")
+    
+        # État et boutons de confirmation
+        self.stop_confirmation_active = False
+        self.button_confirm = Button(20, 630, 80, 100, 'CONFIRM', self.font15, WHITE, (200, 0, 0), self.action_confirm_stop, (255, 100, 100), "AQUAMIS STOPPED")
+        self.button_cancel = Button(110, 630, 80, 100, 'CANCEL', self.font15, WHITE, (75, 75, 75), self.action_cancel_stop, (150, 150, 150), "")
 
         self.layout_profile_prompt = Special_button(0, 0, 1, 1, '', self.font, WHITE, (0, 0, 0), (0, 0, 0), starting_screen)
         self.switch_com = Button(20, 400, 350, 80, 'SWITCH COM', self.font, WHITE, self.button_color, self.button_action, BCP, "Comms have been switched!")
@@ -268,6 +273,25 @@ class App():
 
         self.cube = Cube.Cube(screen_pos=(500, 300), size=65, viewer_distance=300)
 
+        # État précédent pour détecter les changements de mouvement
+        self._prev_cube_movement = 0
+        self._prev_roll = 0.0
+        self._prev_pitch = 0.0
+        self._prev_yaw = 0.0
+        self._movement_start_time = 0
+        self._rotation_threshold = 1.0  # Seuil minimum pour logger une rotation (degrés)
+        self._last_logged_angles = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+        
+        # Suivi des touches de rotation pour détection du relâchement
+        self._prev_rotation_keys = {
+            pygame.K_r: False,  # PITCH +
+            pygame.K_f: False,  # PITCH -
+            pygame.K_a: False,  # YAW -
+            pygame.K_e: False,  # YAW +
+            pygame.K_q: False,  # ROLL -
+            pygame.K_d: False,  # ROLL +
+        }
+
         if logo:
             self.logo_amis_big = pygame.transform.scale(logo, (70, 70))
             self.logo_amis_small = pygame.transform.scale(logo, (60, 60))
@@ -300,6 +324,9 @@ class App():
 
         # vitesse de rotation manuelle du cube (degrés par frame)
         self.cube_rotation_speed = 2.0
+        
+        # État du mouvement du cube (avance/recule)
+        self.cube_movement = 0  # 0: immobile, 1: avance (Z), -1: recule (S)
 
     def _clamp_angle_180(self, angle: float) -> float:
         """Normalise un angle à la plage -180° à 180°"""
@@ -400,8 +427,21 @@ class App():
         self.envoie["info_fonction"][0] -= 1
 
     def but_stop(self):
+        # Activer l'écran de confirmation au lieu de fermer directement
+        self.stop_confirmation_active = True
         for i in range(1, 5):
             self.envoie["info_fonction"][i] = 0
+
+    def action_confirm_stop(self):
+        """Confirme l'arrêt et ferme l'application"""
+        self.stop_confirmation_active = False
+        self.logger.warning("System Stopped")
+        self.running = False
+
+    def action_cancel_stop(self):
+        """Annule l'arrêt et revient à l'interface"""
+        self.stop_confirmation_active = False
+        self.logger.info("Stop cancelled")
 
     def button_start_action(self):
         print("\nSystem is already running - AMIS is LIVE!")
@@ -410,17 +450,20 @@ class App():
         print("\nAction Triggered")
 
     def action_start(self):
-        self.logger.info("System Started")
-        print("\nSystem Started")
+        if self.started == False:
+            self.started = True
+            self.logger.info("System Started")
+            print("\nSystem Started")
+        else:
+            self.logger.info("System is already Running")
+            print("\nSystem is already Running")
 
     def action_stop(self):
-        self.but_stop()                 
+        # Arrêt direct sans confirmation (appelé depuis le menu)
+        for i in range(1, 5):
+            self.envoie["info_fonction"][i] = 0
         self.logger.warning("System Stopped")
-        print("\nSystem Stopped")
-
-    def action_emergency_stop(self):
-        self.button_emergency_stop.emergency_trigger()
-        self.logger.warning("Emergency Stop Requested")
+        self.running = False
 
     def action_set_log_filter(self, level_name: str) -> None:
         self.log_system.set_min_level(level_name)
@@ -550,6 +593,72 @@ class App():
     def action_about(self):
         pass                                    
 
+    def _log_cube_movement(self) -> None:
+        """Log les changements de mouvement et rotation du cube"""
+        current_time = time.time()
+        
+        # Détection du changement de mouvement (avance/recule)
+        if self.cube_movement != self._prev_cube_movement:
+            if self.cube_movement == 1:
+                self._movement_start_time = current_time
+                if hasattr(self, "logger"):
+                    self.logger.info("AMIS: MOVING FORWARD")
+            elif self.cube_movement == -1:
+                self._movement_start_time = current_time
+                if hasattr(self, "logger"):
+                    self.logger.info("AMIS: MOVING BACKWARD")
+            elif self._prev_cube_movement != 0:
+                # Mouvement arrêté
+                if hasattr(self, "logger"):
+                    duration_ms = int((current_time - self._movement_start_time) * 1000)
+                    direction = "FORWARD" if self._prev_cube_movement == 1 else "BACKWARD"
+                    self.logger.info(f"AMIS: Stopped after {direction} ({duration_ms} ms)")
+            
+            self._prev_cube_movement = self.cube_movement
+        
+        # Vérification des touches de rotation actuellement pressées
+        current_rotation_keys = {
+            pygame.K_r: self.keys[pygame.K_r],
+            pygame.K_f: self.keys[pygame.K_f],
+            pygame.K_a: self.keys[pygame.K_a],
+            pygame.K_e: self.keys[pygame.K_e],
+            pygame.K_q: self.keys[pygame.K_q],
+            pygame.K_d: self.keys[pygame.K_d],
+        }
+        
+        # Détection du relâchement de touche (transition de True à False)
+        key_released = any(
+            self._prev_rotation_keys[k] and not current_rotation_keys[k]
+            for k in self._prev_rotation_keys
+        )
+        
+        # Log les angles uniquement si une touche de rotation a été relâchée
+        if key_released:
+            roll_delta = abs(self.roll - self._last_logged_angles["roll"])
+            pitch_delta = abs(self.pitch - self._last_logged_angles["pitch"])
+            yaw_delta = abs(self.yaw - self._last_logged_angles["yaw"])
+            
+            # Log Roll si changement significatif
+            if roll_delta >= self._rotation_threshold:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"AMIS: ROLL {self.roll:.1f}° (Δ {roll_delta:.1f}°)")
+                self._last_logged_angles["roll"] = self.roll
+            
+            # Log Pitch si changement significatif
+            if pitch_delta >= self._rotation_threshold:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"AMIS: PITCH {self.pitch:.1f}° (Δ {pitch_delta:.1f}°)")
+                self._last_logged_angles["pitch"] = self.pitch
+            
+            # Log Yaw si changement significatif
+            if yaw_delta >= self._rotation_threshold:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"AMIS: YAW {self.yaw:.1f}° (Δ {yaw_delta:.1f}°)")
+                self._last_logged_angles["yaw"] = self.yaw
+        
+        # Mise à jour de l'état précédent des touches
+        self._prev_rotation_keys = current_rotation_keys
+
     def main(self):
         self.logger.info("Main loop started")
         while self.running:
@@ -608,19 +717,10 @@ class App():
                     if event.key == pygame.K_F11:
                         pygame.display.toggle_fullscreen()
                     self.button_stop.handle_event_stop(event)
-                    result_emergency = self.button_emergency_stop.handle_event_emergency(event)
-
-                    if result_emergency == "emergency_stop":
-                        if self.socket_client and hasattr(self.socket_client, 'running') and self.socket_client.running:
-                            self.socket_client.close()
-                        if self.video_receiver:
-                            self.video_receiver.running = False
-                        if self.data_handler:
-                            self.data_handler.running = False
+                    
                     self._update_status_boxes(event.key)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if self.button_emergency_stop.show_emergency_input: continue
-
+            
                     mouse_pos = convert_mouse_pos_with_menu(
                         pygame.mouse.get_pos(),
                         self.screen,
@@ -701,9 +801,16 @@ class App():
                         self.dashboard.set_speed_rect(self.speed_window.rect)
                         self.dashboard.handle_event(event, virtual_event_pos)
 
-                    for button in self.all_buttons:
-                        if button.rect.collidepoint(mouse_pos):
-                            button.click(mouse_pos)
+                    # Gestion des boutons de confirmation
+                    if self.stop_confirmation_active:
+                        if self.button_confirm.rect.collidepoint(mouse_pos):
+                            self.button_confirm.click(mouse_pos)
+                        elif self.button_cancel.rect.collidepoint(mouse_pos):
+                            self.button_cancel.click(mouse_pos)
+                    else:
+                        for button in self.all_buttons:
+                            if button.rect.collidepoint(mouse_pos):
+                                button.click(mouse_pos)
 
             self.virtual_screen.fill((0, 0, 0, 0))
 
@@ -770,6 +877,14 @@ class App():
                 if self.keys[pygame.K_d]:
                     self.roll_keyboard_delta += self.cube_rotation_speed
                 
+                # Z/S: mouvement avant/arrière du cube
+                if self.keys[pygame.K_z]:
+                    self.cube_movement = 1  # Avance
+                elif self.keys[pygame.K_s]:
+                    self.cube_movement = -1  # Recule
+                else:
+                    self.cube_movement = 0  # Immobile
+                
                 # Normaliser les angles à [-180, 180]
                 self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta)
                 self.pitch_keyboard_delta = self._clamp_angle_180(self.pitch_keyboard_delta)
@@ -781,6 +896,9 @@ class App():
                     pitch=self.pitch,
                     roll=self.roll,
                 )
+                
+                # Log les mouvements du cube
+                self._log_cube_movement()
 
             except Exception:
                 pass
@@ -1170,6 +1288,24 @@ class App():
                 ly = camera_rect.y + pad_label
                 self.virtual_screen.blit(label, (lx, ly))
 
+                # Indicateur de mouvement du cube
+                movement_text = ""
+                movement_color = WHITE
+                if self.cube_movement == 1:
+                    movement_text = "▲ FORWARD"
+                    movement_color = (0, 255, 0)
+                elif self.cube_movement == -1:
+                    movement_text = "▼ BACKWARD"
+                    movement_color = (255, 100, 0)
+                else:
+                    movement_text = "● STOPPED"
+                    movement_color = (150, 150, 150)
+                
+                movement_surf = self.font15.render(movement_text, True, movement_color)
+                movement_x = lx
+                movement_y = ly + label.get_height() + 4
+                self.virtual_screen.blit(movement_surf, (movement_x, movement_y))
+
                 self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
                 self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
                 pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
@@ -1261,6 +1397,55 @@ class App():
                 },
             )
 
+            # Si l'écran de confirmation d'arrêt est actif, on le dessine
+            # SUR la surface virtuelle (BASE_WIDTH x BASE_HEIGHT) pour que
+            # les rects de clic correspondent aux coordonnées virtuelles.
+            if self.stop_confirmation_active:
+                overlay = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.virtual_screen.blit(overlay, (0, 0))
+
+                box_w = min(600, BASE_WIDTH - 120)
+                box_h = 180
+                box_x = (BASE_WIDTH - box_w) // 2
+                box_y = (BASE_HEIGHT - box_h) // 2
+
+                # ombre
+                shadow = pygame.Surface((box_w + 12, box_h + 12), pygame.SRCALPHA)
+                pygame.draw.rect(shadow, (0, 0, 0, 60), shadow.get_rect(), border_radius=16)
+                self.virtual_screen.blit(shadow, (box_x - 6, box_y - 6))
+
+                # boite rouge principale
+                dialog = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                pygame.draw.rect(dialog, (139, 0, 0), dialog.get_rect(), border_radius=14)
+                pygame.draw.rect(dialog, (200, 50, 50), dialog.get_rect(), 3, border_radius=14)
+
+                title_surf = self.font18.render("Do you want to stop AQUAMIS?", True, (255, 220, 220))
+                dialog.blit(title_surf, (20, 20))
+
+                # boutons virtuels (coordonnées sur la surface virtuelle)
+                btn_w, btn_h = 160, 48
+                gap = 24
+                confirm_rect_v = pygame.Rect(box_x + (box_w // 2) - btn_w - gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
+                cancel_rect_v = pygame.Rect(box_x + (box_w // 2) + gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
+
+                # Dessiner boutons dans la surface principale (pour avoir coins arrondis)
+                pygame.draw.rect(self.virtual_screen, (200, 0, 0), confirm_rect_v, border_radius=10)
+                pygame.draw.rect(self.virtual_screen, (255, 120, 120), confirm_rect_v, 2, border_radius=10)
+                confirm_lbl = self.font15.render("CONFIRM", True, WHITE)
+                self.virtual_screen.blit(confirm_lbl, (confirm_rect_v.centerx - confirm_lbl.get_width() // 2,
+                                                       confirm_rect_v.centery - confirm_lbl.get_height() // 2))
+
+                pygame.draw.rect(self.virtual_screen, (75, 75, 75), cancel_rect_v, border_radius=10)
+                pygame.draw.rect(self.virtual_screen, (150, 150, 150), cancel_rect_v, 2, border_radius=10)
+                cancel_lbl = self.font15.render("CANCEL", True, WHITE)
+                self.virtual_screen.blit(cancel_lbl, (cancel_rect_v.centerx - cancel_lbl.get_width() // 2,
+                                                      cancel_rect_v.centery - cancel_lbl.get_height() // 2))
+
+                # Mettre à jour les rects des boutons utilisés pour la détection de clic
+                self.button_confirm.rect = confirm_rect_v
+                self.button_cancel.rect = cancel_rect_v
+
             scale, x_offset, y_offset, new_w, new_h = compute_transform_with_menu(
                 self.screen,
                 menu_height,
@@ -1271,9 +1456,6 @@ class App():
             self.screen.blit(scaled_v_screen, (x_offset, y_offset))
 
             self.menu_bar.draw_dropdown(self.screen)
-
-            if self.button_emergency_stop.show_emergency_input:
-                self.button_emergency_stop.draw(self.screen, self.font)
 
             if self.layout_profile_prompt.show_text_prompt_input:
                 self.layout_profile_prompt.draw(self.screen, self.font)
@@ -1286,6 +1468,7 @@ class App():
                 fade.fill(BLACK)
                 fade.set_alpha(self.fade_in_alpha)
                 self.screen.blit(fade, (0,0))
+
             self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
             try:
                 self.data_handler.message_to_send = self.envoie
