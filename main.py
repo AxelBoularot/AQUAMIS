@@ -106,7 +106,7 @@ class App():
         self._base_menu_items = [
             ("File", [("Open IP...", self.action_open), ("Save Data", self.action_save_data)]),
             ("Start", self.action_start, (0, 150, 0)),
-            ("Stop", self.action_exit, (150, 0, 0)),
+            ("Stop", self.but_stop, (150, 0, 0)),
             ("Views", []),
             (
                 "Tools",
@@ -235,6 +235,11 @@ class App():
         self.button_start = Button(200, 630, 170, 100, 'ALREADY RUNNING', self.font15, WHITE, GREEN, self.button_start_action, (100, 255, 100), "START")
         self.button_stop = Special_button(20, 630, 170, 100, 'STOP', self.font, WHITE, (139, 0, 0), (255, 100, 100), starting_screen, self.but_stop, "")
     
+        # État et boutons de confirmation
+        self.stop_confirmation_active = False
+        self.button_confirm = Button(20, 630, 80, 100, 'CONFIRM', self.font15, WHITE, (200, 0, 0), self.action_confirm_stop, (255, 100, 100), "AQUAMIS STOPPED")
+        self.button_cancel = Button(110, 630, 80, 100, 'CANCEL', self.font15, WHITE, (75, 75, 75), self.action_cancel_stop, (150, 150, 150), "")
+
         self.layout_profile_prompt = Special_button(0, 0, 1, 1, '', self.font, WHITE, (0, 0, 0), (0, 0, 0), starting_screen)
         self.switch_com = Button(20, 400, 350, 80, 'SWITCH COM', self.font, WHITE, self.button_color, self.button_action, BCP, "Comms have been switched!")
 
@@ -422,8 +427,21 @@ class App():
         self.envoie["info_fonction"][0] -= 1
 
     def but_stop(self):
+        # Activer l'écran de confirmation au lieu de fermer directement
+        self.stop_confirmation_active = True
         for i in range(1, 5):
             self.envoie["info_fonction"][i] = 0
+
+    def action_confirm_stop(self):
+        """Confirme l'arrêt et ferme l'application"""
+        self.stop_confirmation_active = False
+        self.logger.warning("System Stopped")
+        self.running = False
+
+    def action_cancel_stop(self):
+        """Annule l'arrêt et revient à l'interface"""
+        self.stop_confirmation_active = False
+        self.logger.info("Stop cancelled")
 
     def button_start_action(self):
         print("\nSystem is already running - AMIS is LIVE!")
@@ -441,9 +459,11 @@ class App():
             print("\nSystem is already Running")
 
     def action_stop(self):
-        self.but_stop()                 
+        # Arrêt direct sans confirmation (appelé depuis le menu)
+        for i in range(1, 5):
+            self.envoie["info_fonction"][i] = 0
         self.logger.warning("System Stopped")
-        print("\nSystem Stopped")
+        self.running = False
 
     def action_set_log_filter(self, level_name: str) -> None:
         self.log_system.set_min_level(level_name)
@@ -781,9 +801,16 @@ class App():
                         self.dashboard.set_speed_rect(self.speed_window.rect)
                         self.dashboard.handle_event(event, virtual_event_pos)
 
-                    for button in self.all_buttons:
-                        if button.rect.collidepoint(mouse_pos):
-                            button.click(mouse_pos)
+                    # Gestion des boutons de confirmation
+                    if self.stop_confirmation_active:
+                        if self.button_confirm.rect.collidepoint(mouse_pos):
+                            self.button_confirm.click(mouse_pos)
+                        elif self.button_cancel.rect.collidepoint(mouse_pos):
+                            self.button_cancel.click(mouse_pos)
+                    else:
+                        for button in self.all_buttons:
+                            if button.rect.collidepoint(mouse_pos):
+                                button.click(mouse_pos)
 
             self.virtual_screen.fill((0, 0, 0, 0))
 
@@ -1389,6 +1416,38 @@ class App():
                 fade.fill(BLACK)
                 fade.set_alpha(self.fade_in_alpha)
                 self.screen.blit(fade, (0,0))
+
+            # Afficher les boutons de confirmation s'ils sont actifs (AU PREMIER PLAN)
+            if self.stop_confirmation_active:
+                # Overlay semi-transparent
+                overlay = pygame.Surface(current_size, pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.screen.blit(overlay, (0, 0))
+                
+                # Afficher un texte de confirmation
+                confirm_text = self.font18.render("Do you want to stop AQUAMIS?", True, WHITE)
+                text_x = current_size[0] // 2 - confirm_text.get_width() // 2
+                text_y = 300
+                self.screen.blit(confirm_text, (text_x, text_y))
+                
+                # Bouton CONFIRM
+                confirm_rect = pygame.Rect(current_size[0] // 2 - 110, 400, 100, 50)
+                pygame.draw.rect(self.screen, (200, 0, 0), confirm_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (255, 100, 100), confirm_rect, 2, border_radius=8)
+                confirm_lbl = self.font15.render("CONFIRM", True, WHITE)
+                self.screen.blit(confirm_lbl, (confirm_rect.centerx - confirm_lbl.get_width() // 2, 
+                                               confirm_rect.centery - confirm_lbl.get_height() // 2))
+                self.button_confirm.rect = confirm_rect
+                
+                # Bouton CANCEL
+                cancel_rect = pygame.Rect(current_size[0] // 2 + 10, 400, 100, 50)
+                pygame.draw.rect(self.screen, (75, 75, 75), cancel_rect, border_radius=8)
+                pygame.draw.rect(self.screen, (150, 150, 150), cancel_rect, 2, border_radius=8)
+                cancel_lbl = self.font15.render("CANCEL", True, WHITE)
+                self.screen.blit(cancel_lbl, (cancel_rect.centerx - cancel_lbl.get_width() // 2, 
+                                              cancel_rect.centery - cancel_lbl.get_height() // 2))
+                self.button_cancel.rect = cancel_rect
+
             self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
             try:
                 self.data_handler.message_to_send = self.envoie
