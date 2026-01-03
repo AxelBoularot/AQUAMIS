@@ -4,10 +4,10 @@
       "windows": {
         "Camera": {
           "rect": [
-            390,
-            10,
-            720,
-            480
+            404,
+            35,
+            708,
+            546
           ],
           "min": false
         },
@@ -31,10 +31,10 @@
         },
         "Logs": {
           "rect": [
-            10,
-            100,
-            370,
-            200
+            0,
+            98,
+            398,
+            414
           ],
           "min": false
         },
@@ -76,12 +76,12 @@
         },
         "PressureDepth": {
           "rect": [
-            390,
-            500,
+            30,
+            428,
             160,
             160
           ],
-          "min": false
+          "min": true
         },
         "Temp": {
           "rect": [
@@ -90,12 +90,12 @@
             160,
             160
           ],
-          "min": false
+          "min": true
         },
         "Thrusters": {
           "rect": [
-            730,
-            500,
+            12,
+            520,
             380,
             120
           ],
@@ -108,7 +108,7 @@
             380,
             120
           ],
-          "min": false
+          "min": true
         },
         "CameraControls": {
           "rect": [
@@ -127,23 +127,33 @@
             120
           ],
           "min": true
+        },
+        "Keybinds": {
+          "rect": [
+            655,
+            585,
+            260,
+            150
+          ],
+          "min": false
         }
       },
       "z_order": [
-        "Camera",
-        "Graphs",
         "Status",
-        "Logs",
-        "PressureDepth",
-        "Temp",
+        "Battery",
         "CameraControls",
         "AIOptions",
-        "Thrusters",
         "Signal",
         "Ballast",
         "Speed",
-        "Battery",
-        "Power"
+        "Power",
+        "PressureDepth",
+        "Temp",
+        "Graphs",
+        "Camera",
+        "Logs",
+        "Thrusters",
+        "Keybinds"
       ]
     },
     "Matis": {
@@ -459,5 +469,5 @@
       ]
     }
   },
-  "last_profile": "Julien"
+  "last_profile": "Axel"
 }

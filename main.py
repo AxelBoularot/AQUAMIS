@@ -54,6 +54,7 @@ from dependencies.Indicators import (
     draw_pressure_depth_indicator,
     draw_temp_indicator,
 )
+import queue
 
 model, device = load_yolo_model()
 
@@ -69,6 +70,97 @@ except FileNotFoundError:
 starting_screen = pygame.display.set_mode((BASE_WIDTH, BASE_HEIGHT), pygame.RESIZABLE)
 starting_font_button = load_brand_font(20, bold=True)
 
+
+class AIWorker(threading.Thread):
+    def __init__(self, app_ref, model, device, output_queue):
+        super().__init__()
+        self.app_ref = app_ref  # Référence pour accéder aux flags (ai_options, sources)
+        self.model = model
+        self.device = device
+        self.output_queue = output_queue
+        self.running = True
+        self.daemon = True # Le thread se coupe si le main crash
+
+    def run(self):
+        logging.info("AI Worker Thread Started")
+        while self.running:
+            # 1. Limitation de vitesse pour ne pas brûler le CPU (Max ~30 FPS pour l'IA, c'est suffisant)
+            time.sleep(0.03) 
+
+            # 2. Vérifier si l'IA est activée ou si la caméra est en pause
+            if self.app_ref.camera_controls.paused:
+                continue
+
+            # 3. Récupération de la frame (Logique extraite de ton main)
+            frame_bgr = None
+            if start_screen_module.USE_PHONE_SENSORS and start_screen_module.phone_video_frame is not None:
+                with start_screen_module.phone_video_lock:
+                    frame_bgr = start_screen_module.phone_video_frame.copy()
+            elif self.app_ref.video_receiver and self.app_ref.video_receiver.frame is not None:
+                with self.app_ref.video_receiver.frame_lock:
+                    frame_bgr = self.app_ref.video_receiver.frame.copy()
+
+            if frame_bgr is None:
+                continue
+
+            # 4. Traitement IA (Lourd !)
+            detected_objects = [] # Liste des objets pour ton usage externe
+            annotated_frame = frame_bgr
+
+            if self.app_ref.ai_options.enabled and self.model is not None:
+                try:
+                    # Inférence YOLO
+                    results = self.model.track(
+                        frame_bgr,
+                        persist=bool(self.app_ref.ai_options.tracking),
+                        verbose=False,
+                        device=self.device
+                    )
+                    
+                    if results:
+                        # Annoter l'image
+                        annotated_frame = results[0].plot()
+                        
+                        # Extraire les données brutes (Classe, Confiance, Bbox)
+                        for box in results[0].boxes:
+                            cls_id = int(box.cls[0])
+                            label = self.model.names[cls_id]
+                            conf = float(box.conf[0])
+                            xyxy = box.xyxy[0].tolist() # Coordonnées [x1, y1, x2, y2]
+                            
+                            detected_objects.append({
+                                "label": label,
+                                "confidence": conf,
+                                "bbox": xyxy
+                            })
+
+                except Exception as e:
+                    # Gestion robuste du fallback CPU comme dans ton code original
+                    print(f"AI Error in Thread: {e}")
+                    if "cuda" in str(e).lower():
+                        self.device = "cpu"
+                        try:
+                            self.model = self.model.to("cpu")
+                            logging.warning("AI Worker switched to CPU")
+                        except: pass
+
+            # 5. Préparation pour Pygame (Conversion Couleur + Rotation axes)
+            # On fait le calcul lourd (numpy swapaxes) ICI, pas dans le main thread
+            try:
+                frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                # Transposition pour Pygame (width, height, channels) -> (width, height)
+                frame_data = frame_rgb.swapaxes(0, 1)
+                
+                # On envoie le paquet complet au Main Thread
+                if not self.output_queue.full():
+                    self.output_queue.put({
+                        "frame_data": frame_data, # Données brutes prêtes pour make_surface
+                        "detections": detected_objects,
+                        "timestamp": time.time()
+                    })
+            except Exception as e:
+                print(f"Frame prep error: {e}")
+                
 class App():
     def __init__(self):
         self.running = True
@@ -166,6 +258,19 @@ class App():
         self.ai_options = AIDetectionOptionsState()
         self.keybinds = keybinds(200, 200, self.font15, lift=40)
         self._last_camera_frame = None
+        
+        # --- AJOUT MULTI-THREADING ---
+        # Queue de taille 1 : on ne veut que la frame la plus récente, on s'en fout du retard
+        self.ai_queue = queue.Queue(maxsize=1) 
+        
+        # Stockage de la dernière surface prête à être affichée (Double Buffering)
+        self.cached_camera_surface = None
+        self.latest_detections = [] # TA LISTE D'OBJETS EST ICI
+        
+        # Démarrage du Worker
+        self.ai_worker = AIWorker(self, model, device, self.ai_queue)
+        self.ai_worker.start()
+        # -----------------------------
 
         load_thread = threading.Thread(target=self.load_resources)
         load_thread.daemon = True
@@ -1192,85 +1297,89 @@ class App():
                 self.window_system.draw_minimize_button(self.virtual_screen, self.status_window, mouse_pos_virtual)
 
             def _draw_camera():
-                global device, model
+                # --- GESTION DU FLUX VIDEO ET IA (ASYNC) ---
+                
+                # 1. Vérifier si le thread a envoyé une nouvelle image
+                try:
+                    # get_nowait est non-bloquant ! C'est la clé de la fluidité.
+                    data = self.ai_queue.get_nowait()
+                    
+                    # On a une nouvelle frame !
+                    frame_data = data["frame_data"]
+                    self.latest_detections = data["detections"] # Mise à jour de la liste
+                    
+                    # Création de la surface Pygame (C'est très rapide car les données sont déjà prêtes)
+                    self.cached_camera_surface = pygame.surfarray.make_surface(frame_data)
+                    
+                except queue.Empty:
+                    # Pas de nouvelle image, ce n'est pas grave, on réutilise la précédente
+                    pass
+
+                # -------------------------------------------
+
                 if self.window_system.is_minimized("Camera"):
                     return
+                
                 camera_rect = self.camera_window.rect
                 pygame.draw.rect(self.virtual_screen, (0, 0, 0), camera_rect)
                 pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
                 
-                if frame is not None:
+                # Affichage de l'image (depuis le cache)
+                if self.cached_camera_surface is not None:
                     try:
-                        frame_bgr = np.ascontiguousarray(frame)
-                        annotated_frame = frame_bgr
-                        if self.ai_options.enabled and model is not None:
-                            try:
-                                results = model.track(
-                                    frame_bgr,
-                                    persist=bool(self.ai_options.tracking),
-                                    verbose=False,
-                                    device=device,
-                                )
-                                annotated_frame = results[0].plot() if results else frame_bgr
-                            except Exception as e:
-                                msg = str(e)
-                                if (
-                                    device != "cpu"
-                                    and (
-                                        "no kernel image is available for execution on the device" in msg
-                                        or "cudaErrorNoKernelImageForDevice" in msg
-                                    )
-                                ):
-                                    device = "cpu"
-                                    try:
-                                        model = model.to("cpu")
-                                    except Exception:
-                                        pass
-                                    if hasattr(self, "logger"):
-                                        self.logger.warning("CUDA non disponible/incompatible; YOLO passe en CPU")
-                                    print("CUDA not usable; switched YOLO to CPU.")
-
-                                    results = model.track(
-                                        frame_bgr,
-                                        persist=bool(self.ai_options.tracking),
-                                        verbose=False,
-                                        device=device,
-                                    )
-                                    annotated_frame = results[0].plot() if results else frame_bgr
-                                else:
-                                    raise
-                        frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-                        frame_surface = pygame.transform.scale(frame_surface, (camera_rect.w - 4, camera_rect.h - 4))
-                        frame_rect = frame_surface.get_rect(center=camera_rect.center)
-                        self.virtual_screen.blit(frame_surface, frame_rect)
+                        # Mise à l'échelle pour la fenêtre
+                        scaled_surface = pygame.transform.scale(
+                            self.cached_camera_surface, 
+                            (camera_rect.w - 4, camera_rect.h - 4)
+                        )
+                        frame_rect = scaled_surface.get_rect(center=camera_rect.center)
+                        self.virtual_screen.blit(scaled_surface, frame_rect)
+                        
+                        # (Optionnel) Afficher le nombre d'objets détectés pour debug
+                        if self.ai_options.enabled and self.latest_detections:
+                            nb_obj = len(self.latest_detections)
+                            info_s = self.font15.render(f"AI: {nb_obj} objects", True, (0, 255, 0))
+                            self.virtual_screen.blit(info_s, (camera_rect.x + 10, camera_rect.bottom - 30))
+                            
                     except Exception as e:
-                        msg = str(e)
-                        if (
-                            device != "cpu"
-                            and (
-                                "no kernel image is available for execution on the device" in msg
-                                or "cudaErrorNoKernelImageForDevice" in msg
-                            )
-                        ):
-                            if not hasattr(self, "_yolo_cpu_fallback_done"):
-                                self._yolo_cpu_fallback_done = False
+                        print(f"Blit error: {e}")
 
-                            device = "cpu"
-                            try:
-                                if model is not None:
-                                    model = model.to("cpu")
-                            except Exception:
-                                pass
+                # Le reste de l'affichage (Cube, Textes, UI) reste inchangé
+                pad = 12
+                cx = camera_rect.right - max(70, int(camera_rect.w * 0.16))
+                cy = camera_rect.y + max(70, int(camera_rect.h * 0.18))
+                cx = max(camera_rect.x + pad, min(cx, camera_rect.right - pad))
+                cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
+                
+                self.cube.set_screen_pos(cx, cy)
+                self.cube.draw(self.virtual_screen)
 
-                            if not self._yolo_cpu_fallback_done:
-                                self._yolo_cpu_fallback_done = True
-                                if hasattr(self, "logger"):
-                                    self.logger.warning("CUDA non compatible; YOLO forcé en CPU")
-                                print("CUDA not compatible; forcing YOLO to CPU.")
-                            return
+                label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
+                pad_label = 8
+                lx = camera_rect.x + pad_label
+                ly = camera_rect.y + pad_label
+                self.virtual_screen.blit(label, (lx, ly))
 
-                        print(f"Video Error: {e}")
+                # Indicateur de mouvement du cube
+                movement_text = ""
+                movement_color = WHITE
+                if self.cube_movement == 1:
+                    movement_text = "▲ FORWARD"
+                    movement_color = (0, 255, 0)
+                elif self.cube_movement == -1:
+                    movement_text = "▼ BACKWARD"
+                    movement_color = (255, 100, 0)
+                else:
+                    movement_text = "● STOPPED"
+                    movement_color = (150, 150, 150)
+                
+                movement_surf = self.font15.render(movement_text, True, movement_color)
+                movement_y = ly + label.get_height() + 4
+                self.virtual_screen.blit(movement_surf, (lx, movement_y))
+
+                self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+                self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
+                pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
 
                 pad = 12
                 # Keep cube anchored near top-right of the camera window (and inside bounds)
@@ -1494,6 +1603,7 @@ class App():
         if self.data_handler:
             self.data_handler.running = False
             self.data_handler.join()
+        self.ai_worker.running = False
 
 
 __all__ = ["App", "run"]
@@ -1502,6 +1612,7 @@ def run():
     show_start_screen(starting_font_button=starting_font_button, logo=logo, starting_screen=starting_screen)
     app = App()
     app.main()
+    
 
 if __name__ == '__main__':
     run()
