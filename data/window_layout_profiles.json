@@ -32,7 +32,7 @@
         "Logs": {
           "rect": [
             0,
-            98,
+            95,
             398,
             414
           ],
@@ -151,9 +151,9 @@
         "Temp",
         "Graphs",
         "Camera",
-        "Logs",
         "Thrusters",
-        "Keybinds"
+        "Keybinds",
+        "Logs"
       ]
     },
     "Matis": {

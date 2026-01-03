@@ -85,7 +85,7 @@ class AIWorker(threading.Thread):
         logging.info("AI Worker Thread Started")
         while self.running:
             # 1. Limitation de vitesse pour ne pas brûler le CPU (Max ~30 FPS pour l'IA, c'est suffisant)
-            time.sleep(0.03) 
+            time.sleep(0.01) # Réduit un peu le sleep pour être plus réactif
 
             # 2. Vérifier si l'IA est activée ou si la caméra est en pause
             if self.app_ref.camera_controls.paused:
@@ -105,22 +105,24 @@ class AIWorker(threading.Thread):
 
             # 4. Traitement IA (Lourd !)
             detected_objects = [] # Liste des objets pour ton usage externe
-            annotated_frame = frame_bgr
 
             if self.app_ref.ai_options.enabled and self.model is not None:
                 try:
-                    # Inférence YOLO
+                    # Pour normaliser les coordonnées plus tard
+                    h, w = frame_bgr.shape[:2]
+
+                    # Inférence YOLO OPTIMISÉE
+                    # imgsz=320 : Accélère énormément le calcul sur CPU (moins de pixels à traiter)
                     results = self.model.track(
                         frame_bgr,
                         persist=bool(self.app_ref.ai_options.tracking),
                         verbose=False,
-                        device=self.device
+                        device=self.device,
+                        imgsz=320,  # <--- OPTIMISATION MAJEURE ICI
+                        conf=0.25
                     )
                     
                     if results:
-                        # Annoter l'image
-                        annotated_frame = results[0].plot()
-                        
                         # Extraire les données brutes (Classe, Confiance, Bbox)
                         for box in results[0].boxes:
                             cls_id = int(box.cls[0])
@@ -128,15 +130,17 @@ class AIWorker(threading.Thread):
                             conf = float(box.conf[0])
                             xyxy = box.xyxy[0].tolist() # Coordonnées [x1, y1, x2, y2]
                             
+                            # On stocke les coordonnées normalisées (0.0 à 1.0)
+                            # Cela permet de les redessiner sur n'importe quelle taille d'écran
                             detected_objects.append({
                                 "label": label,
                                 "confidence": conf,
-                                "bbox": xyxy
+                                "bbox_norm": [xyxy[0]/w, xyxy[1]/h, xyxy[2]/w, xyxy[3]/h]
                             })
 
                 except Exception as e:
                     # Gestion robuste du fallback CPU comme dans ton code original
-                    print(f"AI Error in Thread: {e}")
+                    # print(f"AI Error in Thread: {e}") # Désactivé pour éviter le spam console
                     if "cuda" in str(e).lower():
                         self.device = "cpu"
                         try:
@@ -144,23 +148,13 @@ class AIWorker(threading.Thread):
                             logging.warning("AI Worker switched to CPU")
                         except: pass
 
-            # 5. Préparation pour Pygame (Conversion Couleur + Rotation axes)
-            # On fait le calcul lourd (numpy swapaxes) ICI, pas dans le main thread
-            try:
-                frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                # Transposition pour Pygame (width, height, channels) -> (width, height)
-                frame_data = frame_rgb.swapaxes(0, 1)
-                
-                # On envoie le paquet complet au Main Thread
-                if not self.output_queue.full():
-                    self.output_queue.put({
-                        "frame_data": frame_data, # Données brutes prêtes pour make_surface
-                        "detections": detected_objects,
-                        "timestamp": time.time()
-                    })
-            except Exception as e:
-                print(f"Frame prep error: {e}")
-                
+            # 3. Envoi des DATA (très léger) au lieu de l'IMAGE (très lourd)
+            # On n'envoie plus l'image annotée, mais juste la liste des objets.
+            # Le main thread se chargera de dessiner les boites sur l'image fluide de la caméra.
+            if not self.output_queue.full():
+                self.output_queue.put(detected_objects)
+
+
 class App():
     def __init__(self):
         self.running = True
@@ -223,7 +217,7 @@ class App():
         self.speed_window = DraggableWindow(pygame.Rect(10, 540, 370, 110))
         self.battery_window = DraggableWindow(pygame.Rect(10, 655, 370, 90))
 
-                                                        
+                                                                
         self.pressure_depth_window = DraggableWindow(pygame.Rect(390, 500, 160, 160))
         self.temp_window = DraggableWindow(pygame.Rect(560, 500, 160, 160))
         self.thrusters_window = DraggableWindow(pygame.Rect(730, 500, 380, 120))
@@ -264,8 +258,8 @@ class App():
         self.ai_queue = queue.Queue(maxsize=1) 
         
         # Stockage de la dernière surface prête à être affichée (Double Buffering)
-        self.cached_camera_surface = None
-        self.latest_detections = [] # TA LISTE D'OBJETS EST ICI
+        # On ne stocke plus l'image de l'IA ici, mais les objets détectés
+        self.latest_detections = [] 
         
         # Démarrage du Worker
         self.ai_worker = AIWorker(self, model, device, self.ai_queue)
@@ -303,7 +297,7 @@ class App():
         self.virtual_screen = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
         self.clock = pygame.time.Clock()
 
-                                                                        
+                                                                                
         self.max_width_crop_ratio = 0.0
 
         self.start_time = time.time()
@@ -432,6 +426,42 @@ class App():
         
         # État du mouvement du cube (avance/recule)
         self.cube_movement = 0  # 0: immobile, 1: avance (Z), -1: recule (S)
+
+        # Cache variables for telemetry used in draw methods
+        self.current_speed = 0.0
+        self.current_ballast = 0.0
+        self.current_signal = 0.0
+        self.current_pressure = 0.0
+        self.current_depth = 0.0
+        self.current_temp = 0.0
+
+        # Optimization: Map window names to their draw methods once
+        self.draw_map = {
+            "Camera": self.draw_camera,
+            "Graphs": self.draw_graphs,
+            "Status": self.draw_status,
+            "Logs": self.draw_logs,
+            "Signal": self.draw_signal,
+            "Ballast": self.draw_ballast,
+            "Speed": self.draw_speed,
+            "Battery": self.draw_battery,
+            "PressureDepth": self.draw_pressure_depth,
+            "Temp": self.draw_temp,
+            "Thrusters": self.draw_thrusters,
+            "Power": self.draw_power,
+            "CameraControls": self.draw_camera_controls,
+            "AIOptions": self.draw_ai_options,
+            "Keybinds": self.draw_keybinds,
+        }
+
+        self.topbar_drawers = {
+            "Signal": self._drawer_signal,
+            "Ballast": self._drawer_ballast,
+            "Speed": self._drawer_speed,
+            "Battery": self._drawer_battery,
+            "PressureDepth": self._drawer_pressure_depth,
+            "Temp": self._drawer_temp,
+        }
 
     def _clamp_angle_180(self, angle: float) -> float:
         """Normalise un angle à la plage -180° à 180°"""
@@ -764,826 +794,789 @@ class App():
         # Mise à jour de l'état précédent des touches
         self._prev_rotation_keys = current_rotation_keys
 
+    def handle_events(self):
+        self.keys = pygame.key.get_pressed()
+        menu_h = self.menu_bar.menu_height
+
+        if self.fade_in_alpha > 0:
+            self.fade_in_alpha = max(0, self.fade_in_alpha - 60)
+
+        for event in pygame.event.get():
+            if self.layout_profile_prompt.show_text_prompt_input:
+                self.layout_profile_prompt.handle_event_text_prompt(event)
+                continue
+            if 'IP_MODAL' in globals():
+                if ip_modal_handle_event(event): continue
+
+            if hasattr(self, "keybinds") and event.type in (pygame.KEYDOWN, pygame.KEYUP):
+                try:
+                    self.keybinds.handle_event(event)
+                except Exception:
+                    pass
+            if event.type == pygame.QUIT:
+                self.running = False
+
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                v_event_pos = convert_mouse_pos_with_menu(
+                    getattr(event, 'pos', pygame.mouse.get_pos()),
+                    self.screen,
+                    menu_h,
+                    max_width_crop_ratio=self.max_width_crop_ratio,
+                )
+                bounds_rect = pygame.Rect(0, -menu_h, BASE_WIDTH, BASE_HEIGHT + menu_h)
+
+                if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, 'button', None) == 1:
+                    self.window_system.handle_focus_click(v_event_pos)
+                    if self.window_system.handle_minimize_click(v_event_pos):
+                        continue
+
+                if self.window_system.handle_drag_event(event, v_event_pos, bounds_rect=bounds_rect):
+                    continue
+
+            if event.type in (pygame.MOUSEWHEEL, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                v_pos = convert_mouse_pos_with_menu(
+                    pygame.mouse.get_pos(),
+                    self.screen,
+                    menu_h,
+                    max_width_crop_ratio=self.max_width_crop_ratio,
+                )
+                self.log_system.handle_event(event, self.logs_window.rect, mouse_pos=v_pos)
+
+            if event.type == pygame.VIDEORESIZE:
+                self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F11:
+                    pygame.display.toggle_fullscreen()
+                self.button_stop.handle_event_stop(event)
+                
+                self._update_status_boxes(event.key)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+        
+                mouse_pos = convert_mouse_pos_with_menu(
+                    pygame.mouse.get_pos(),
+                    self.screen,
+                    menu_h,
+                    max_width_crop_ratio=self.max_width_crop_ratio,
+                )
+                virtual_event_pos = convert_mouse_pos_with_menu(
+                    event.pos,
+                    self.screen,
+                    menu_h,
+                    max_width_crop_ratio=self.max_width_crop_ratio,
+                )
+
+                handled_panel = False
+
+                # Gyro graph series toggles (ROLL/PITCH/YAW) in the Graphs window
+                if event.button == 1 and hasattr(self, "_gyro_series_click_rects"):
+                    for series, r in list(self._gyro_series_click_rects.items()):
+                        if r.collidepoint(virtual_event_pos):
+                            if hasattr(self, "graph_angles"):
+                                self.graph_angles.toggle_series(series)
+                            if hasattr(self, "logger"):
+                                state = "ON" if self.graph_angles.is_series_enabled(series) else "OFF"
+                                self.logger.info(f"Gyro graph: {series.upper()} {state}")
+                            handled_panel = True
+                            break
+                if handled_panel:
+                    continue
+
+                # Pressure/Depth graph series toggles
+                if event.button == 1 and hasattr(self, "_pd_series_click_rects"):
+                    for series, r in list(self._pd_series_click_rects.items()):
+                        if r.collidepoint(virtual_event_pos):
+                            if hasattr(self, "graph_pressure_depth"):
+                                self.graph_pressure_depth.toggle_series(series)
+                            if hasattr(self, "logger"):
+                                state = "ON" if self.graph_pressure_depth.is_series_enabled(series) else "OFF"
+                                self.logger.info(f"Pressure/Depth graph: {series.upper()} {state}")
+                            handled_panel = True
+                            break
+                if handled_panel:
+                    continue
+                if not self.window_system.is_minimized("CameraControls"):
+                    before_paused = self.camera_controls.paused
+                    handled_panel |= handle_camera_controls_event(
+                        self.camera_controls,
+                        event,
+                        virtual_event_pos,
+                        self.camera_controls_window.rect,
+                    )
+                    if handled_panel and self.camera_controls.paused != before_paused:
+                        self.logger.info("Camera paused" if self.camera_controls.paused else "Camera resumed")
+                if not self.window_system.is_minimized("AIOptions"):
+                    before_enabled = self.ai_options.enabled
+                    before_tracking = self.ai_options.tracking
+                    handled_panel |= handle_ai_options_event(
+                        self.ai_options,
+                        event,
+                        virtual_event_pos,
+                        self.ai_options_window.rect,
+                    )
+                    if handled_panel:
+                        if self.ai_options.enabled != before_enabled:
+                            self.logger.info(
+                                f"AI detections {'enabled' if self.ai_options.enabled else 'disabled'}"
+                            )
+                        if self.ai_options.tracking != before_tracking:
+                            self.logger.info(f"AI tracking {'enabled' if self.ai_options.tracking else 'disabled'}")
+                if handled_panel:
+                    continue
+
+                real_pos = pygame.mouse.get_pos()
+                restored = self.window_system.handle_restore_click(real_pos)
+                if not restored:
+                    self.menu_bar.handle_click(real_pos)
+
+                if not self.window_system.is_minimized("Speed"):
+                    self.dashboard.set_speed_rect(self.speed_window.rect)
+                    self.dashboard.handle_event(event, virtual_event_pos)
+
+                # Gestion des boutons de confirmation
+                if self.stop_confirmation_active:
+                    if self.button_confirm.rect.collidepoint(mouse_pos):
+                        self.button_confirm.click(mouse_pos)
+                    elif self.button_cancel.rect.collidepoint(mouse_pos):
+                        self.button_cancel.click(mouse_pos)
+                else:
+                    for button in self.all_buttons:
+                        if button.rect.collidepoint(mouse_pos):
+                            button.click(mouse_pos)
+
+    def update(self):
+        # --- GESTION DU FLUX VIDEO ET IA (ASYNC) ---
+        # 1. Vérifier si le thread a envoyé une nouvelle image
+        try:
+            # get_nowait est non-bloquant ! C'est la clé de la fluidité.
+            while True:
+                data = self.ai_queue.get_nowait()
+                self.latest_detections = data # Mise à jour de la liste, data est directement la liste
+        except queue.Empty:
+            # Pas de nouvelle image, ce n'est pas grave, on réutilise la précédente
+            pass
+        # -------------------------------------------
+
+        if 'LAST_SAVED_IP' in globals():
+            host = globals().pop('LAST_SAVED_IP')
+            if start_screen_module.USE_PHONE_SENSORS:
+                start_screen_module.PHONE_IP = host
+                start_screen_module.PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
+
+        if start_screen_module.USE_PHONE_SENSORS:
+            try:
+                with open(SENSOR_DATA_FILE, "r") as f:
+                    sensor_data = json.load(f)
+                self.roll_sensor_base = sensor_data.get('roll', self.roll_sensor_base)
+                self.pitch_sensor_base = sensor_data.get('pitch', self.pitch_sensor_base)
+                self.yaw_sensor_base = sensor_data.get('yaw', self.yaw_sensor_base)
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+        elif self.data_handler:
+            with self.data_handler.data_lock:
+                data_text = self.data_handler.received_data
+                try:
+                    if "AccX" in data_text.keys():
+                        self.roll_sensor_base = data_text.get("AngleRoll", 0) + 90
+                        self.pitch_sensor_base = data_text.get("AnglePitch", 0) + 90
+                        self.yaw_sensor_base = data_text.get("AnglaYaw", 0)
+                except: pass
+        
+        self.roll = self._clamp_angle_180(self.roll_sensor_base + self.roll_keyboard_delta)
+        self.pitch = self._clamp_angle_180(self.pitch_sensor_base + self.pitch_keyboard_delta)
+        self.yaw = self._clamp_angle_180(self.yaw_sensor_base + self.yaw_keyboard_delta)
+        
+        self.value.append([self.roll, self.pitch, self.yaw])
+
+        if self.data_text == self.envoie:
+            for i in range(1, 5): self.envoie["info_fonction"][i] = 0
+
+        self.battery.update()
+
+        try:
+            # Contrôles clavier pour les rotations du cube
+            # R/F: modifier le pitch (rotation verticale)
+            if self.keys[pygame.K_r]:
+                self.pitch_keyboard_delta += self.cube_rotation_speed
+            if self.keys[pygame.K_f]:
+                self.pitch_keyboard_delta -= self.cube_rotation_speed
+            
+            # Q/D: modifier le yaw (rotation horizontale)
+            if self.keys[pygame.K_a]:
+                self.yaw_keyboard_delta -= self.cube_rotation_speed
+            if self.keys[pygame.K_e]:
+                self.yaw_keyboard_delta += self.cube_rotation_speed
+            
+            # A/E: modifier le roll (gauche/droite)
+            if self.keys[pygame.K_q]:
+                self.roll_keyboard_delta -= self.cube_rotation_speed
+            if self.keys[pygame.K_d]:
+                self.roll_keyboard_delta += self.cube_rotation_speed
+            
+            # Z/S: mouvement avant/arrière du cube
+            if self.keys[pygame.K_z]:
+                self.cube_movement = 1  # Avance
+            elif self.keys[pygame.K_s]:
+                self.cube_movement = -1  # Recule
+            else:
+                self.cube_movement = 0  # Immobile
+            
+            # Normaliser les angles à [-180, 180]
+            self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta)
+            self.pitch_keyboard_delta = self._clamp_angle_180(self.pitch_keyboard_delta)
+            self.yaw_keyboard_delta = self._clamp_angle_180(self.yaw_keyboard_delta)
+            
+            # Mettre à jour le cube avec les angles courants (yaw, pitch, roll)
+            self.cube.update(
+                yaw=self.yaw,
+                pitch=self.pitch,
+                roll=self.roll,
+            )
+            
+            # Log les mouvements du cube
+            self._log_cube_movement()
+
+        except Exception:
+            pass
+
+        for box, (rx, ry) in self._status_rel_centers.items():
+            box.rect.center = (self.status_window.rect.x + rx, self.status_window.rect.y + ry)
+
+        self.dashboard.set_signal_position(self.signal_window.rect.x, self.signal_window.rect.y)
+        self.dashboard.set_ballast_position(self.ballast_window.rect.x, self.ballast_window.rect.y)
+        self.dashboard.set_speed_position(self.speed_window.rect.x, self.speed_window.rect.y)
+
+        data_for_telemetry = None
+        try:
+            if (not start_screen_module.USE_PHONE_SENSORS) and self.data_handler:
+                with self.data_handler.data_lock:
+                    data_for_telemetry = dict(self.data_handler.received_data)
+        except: pass
+
+        snap = self.telemetry.snapshot(
+            use_phone_sensors=start_screen_module.USE_PHONE_SENSORS,
+            pitch=float(self.pitch),
+            data=data_for_telemetry,
+        )
+
+            # 3. Ballast (Fixed as requested)
+            # User indicated we can't know this value in this mode, so we keep it fixed.
+
+        self.current_speed = snap.speed
+        self.current_ballast = snap.ballast
+        self.current_signal = snap.signal
+        self.current_pressure = snap.pressure_bar
+        self.current_depth = snap.depth_m
+        self.current_temp = snap.elec_temp_c
+
+        self.dashboard.update_data(speed=self.current_speed, ballast=self.current_ballast, signal=self.current_signal)
+        
+        self.menu_bar.update(pygame.mouse.get_pos())
+        self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
+        try:
+            self.data_handler.message_to_send = self.envoie
+        except: pass
+
+    # --- Draw Methods ---
+
+    def draw_graphs(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Graphs"):
+            return
+        right_panel_rect = self.right_graph_window.rect
+        pygame.draw.rect(self.virtual_screen, (25, 25, 25), right_panel_rect, border_radius=8)
+        pygame.draw.rect(self.virtual_screen, (60, 60, 60), right_panel_rect, 1, border_radius=8)
+
+        pad = 7
+        title_gap = self.right_graph_window.titlebar_height + 12
+        inner_left = right_panel_rect.x + pad
+        inner_right = right_panel_rect.right - pad
+        content_top = right_panel_rect.y + title_gap
+        content_bottom = right_panel_rect.bottom - pad
+        content_h = max(0, content_bottom - content_top)
+        gap = 16
+
+        angle_h = max(70, int(content_h * 0.48))
+        pressure_h = max(70, content_h - angle_h - gap)
+
+        legend_w = 120
+        graph_w = max(80, (inner_right - inner_left) - legend_w)
+        if (inner_right - inner_left) <= 140:
+            graph_w = max(80, inner_right - inner_left)
+
+        angles_y = content_top
+        pressure_y = angles_y + angle_h + gap
+
+        self.graph_angles.x_offset = inner_left
+        self.graph_angles.y_offset = angles_y
+        self.graph_angles.width = graph_w
+        self.graph_angles.height = angle_h
+
+        self.graph_pressure_depth.x_offset = inner_left
+        self.graph_pressure_depth.y_offset = pressure_y
+        self.graph_pressure_depth.width = graph_w
+        self.graph_pressure_depth.height = pressure_h
+
+        label_x = inner_left + graph_w + 12
+        label_y0 = right_panel_rect.y + title_gap + 6
+        self._gyro_series_click_rects = {}
+        self._pd_series_click_rects = {}
+        if label_x < inner_right - 40:
+            enabled = getattr(self.graph_angles, "enabled_series", {"roll", "pitch", "yaw"})
+            inactive_c = (140, 155, 170)
+
+            roll_c = (255, 0, 0) if "roll" in enabled else inactive_c
+            pitch_c = (0, 255, 0) if "pitch" in enabled else inactive_c
+            yaw_c = BLUE if "yaw" in enabled else inactive_c
+
+            roll_s = self.font15.render(f"ROLL: {int(self.roll)}", True, roll_c)
+            pitch_s = self.font15.render(f"PITCH: {int(self.pitch)}", True, pitch_c)
+            yaw_s = self.font15.render(f"YAW: {int(self.yaw)}", True, yaw_c)
+
+            roll_pos = (label_x, label_y0 + 30)
+            pitch_pos = (label_x, label_y0 + 55)
+            yaw_pos = (label_x, label_y0 + 80)
+
+            self.virtual_screen.blit(roll_s, roll_pos)
+            self.virtual_screen.blit(pitch_s, pitch_pos)
+            self.virtual_screen.blit(yaw_s, yaw_pos)
+
+            # Make the whole text line clickable
+            self._gyro_series_click_rects["roll"] = roll_s.get_rect(topleft=roll_pos)
+            self._gyro_series_click_rects["pitch"] = pitch_s.get_rect(topleft=pitch_pos)
+            self._gyro_series_click_rects["yaw"] = yaw_s.get_rect(topleft=yaw_pos)
+
+            # Pressure/Depth toggles near the pressure graph block
+            pd_enabled = getattr(self.graph_pressure_depth, "enabled_series", {"pressure", "depth"})
+            p_c = (255, 0, 0) if "pressure" in pd_enabled else inactive_c
+            d_c = (0, 0, 255) if "depth" in pd_enabled else inactive_c
+
+            p_lbl = self.font15.render("PRESSURE", True, p_c)
+            d_lbl = self.font15.render("DEPTH", True, d_c)
+
+            pd_y = pressure_y + 8
+            p_pos = (label_x, pd_y)
+            d_pos = (label_x, pd_y + 22)
+            self.virtual_screen.blit(p_lbl, p_pos)
+            self.virtual_screen.blit(d_lbl, d_pos)
+            self._pd_series_click_rects["pressure"] = p_lbl.get_rect(topleft=p_pos)
+            self._pd_series_click_rects["depth"] = d_lbl.get_rect(topleft=d_pos)
+        self.graph_pressure_depth.update_graph_main()
+        self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
+
+        elapsed = time.time() - self.start_time
+        timer_surf = self.font15.render(f"{int(elapsed)//60:02d} min {int(elapsed)%60:02d} s", True, WHITE)
+        timer_x = self.graph_angles.x_offset + self.graph_angles.width + 10
+        timer_y = angles_y + 5
+        self.virtual_screen.blit(timer_surf, (timer_x, timer_y))
+
+        self.right_graph_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.right_graph_window, mouse_pos_virtual)
+
+    def draw_logs(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Logs"):
+            return
+        self.log_system.draw(
+            self.virtual_screen,
+            self.logs_window.rect.x,
+            self.logs_window.rect.y,
+            self.logs_window.rect.w,
+            self.logs_window.rect.h,
+            mouse_pos=mouse_pos_virtual,
+        )
+        self.logs_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.logs_window, mouse_pos_virtual)
+
+    def draw_signal(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Signal"):
+            return
+        self.dashboard.set_signal_rect(self.signal_window.rect)
+        self.dashboard.draw_signal(self.virtual_screen, mouse_pos=mouse_pos_virtual)
+        self.signal_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.signal_window, mouse_pos_virtual)
+
+    def draw_ballast(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Ballast"):
+            return
+        self.dashboard.set_ballast_rect(self.ballast_window.rect)
+        self.dashboard.draw_ballast(self.virtual_screen, mouse_pos=mouse_pos_virtual)
+        self.ballast_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.ballast_window, mouse_pos_virtual)
+
+    def draw_speed(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Speed"):
+            return
+        self.dashboard.set_speed_rect(self.speed_window.rect)
+        self.dashboard.draw_speed(self.virtual_screen, mouse_pos=mouse_pos_virtual)
+        self.speed_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.speed_window, mouse_pos_virtual)
+
+    def draw_battery(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Battery"):
+            return
+        bat_rect = self.battery_window.rect
+        pygame.draw.rect(self.virtual_screen, (30, 30, 30), bat_rect, border_radius=8)
+        pygame.draw.rect(self.virtual_screen, (60, 60, 60), bat_rect, 1, border_radius=8)
+        title = self.font15.render("BATTERY", True, WHITE)
+        self.virtual_screen.blit(title, (bat_rect.x + 20, bat_rect.y + 12))
+        pct = self.battery.percent()
+        pct_s = self.font15.render(f"{pct}%", True, WHITE)
+        self.virtual_screen.blit(pct_s, (bat_rect.right - pct_s.get_width() - 20, bat_rect.y + 12))
+        icon_rect = pygame.Rect(bat_rect.x + 20, bat_rect.y + 35, 120, 40)
+        draw_battery_indicator(self.virtual_screen, icon_rect, pct, charging=self.battery.charging)
+        self.battery_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.battery_window, mouse_pos_virtual)
+
+    def draw_pressure_depth(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("PressureDepth"):
+            return
+        draw_pressure_depth_panel(self.virtual_screen, self.pressure_depth_window.rect, self.font15, self.current_pressure, self.current_depth)
+        self.pressure_depth_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.pressure_depth_window, mouse_pos_virtual)
+
+    def draw_temp(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Temp"):
+            return
+        draw_temp_panel(self.virtual_screen, self.temp_window.rect, self.font15, self.current_temp)
+        self.temp_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.temp_window, mouse_pos_virtual)
+
+    def draw_thrusters(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Thrusters"):
+            return
+        info = self.envoie.get("info_fonction", [0, 0, 0, 0, 0])
+        right_cmd = float(info[3]) if len(info) > 3 else 0.0
+        left_cmd = float(info[4]) if len(info) > 4 else 0.0
+        draw_thrusters_panel(
+            self.virtual_screen,
+            self.thrusters_window.rect,
+            self.font15,
+            left_cmd=left_cmd,
+            right_cmd=right_cmd,
+            speed=float(self.current_speed),
+        )
+        self.thrusters_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.thrusters_window, mouse_pos_virtual)
+
+    def draw_power(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Power"):
+            return
+        pct = self.battery.percent()
+        draw_power_panel(
+            self.virtual_screen,
+            self.power_window.rect,
+            self.font15,
+            battery_percent=pct,
+            charging=self.battery.charging,
+            consumption_pct_per_min=self.battery.consumption_pct_per_min(),
+            remaining_min=self.battery.remaining_minutes(),
+        )
+        self.power_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.power_window, mouse_pos_virtual)
+
+    def draw_camera_controls(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("CameraControls"):
+            return
+        draw_camera_controls_panel(
+            self.virtual_screen,
+            self.camera_controls_window.rect,
+            self.font15,
+            state=self.camera_controls,
+        )
+        self.camera_controls_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.camera_controls_window, mouse_pos_virtual)
+
+    def draw_ai_options(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("AIOptions"):
+            return
+        draw_ai_options_panel(
+            self.virtual_screen,
+            self.ai_options_window.rect,
+            self.font15,
+            state=self.ai_options,
+        )
+        self.ai_options_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.ai_options_window, mouse_pos_virtual)
+
+    def draw_keybinds(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Keybinds"):
+            return
+        # use instance method so rects and pressed flags are consistent
+        self.keybinds.draw_keybinds_panel(self.virtual_screen, self.keybinds_window.rect)
+        self.keybinds_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.keybinds_window, mouse_pos_virtual) 
+
+    def draw_status(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Status"):
+            return
+        status_panel_rect = self.status_window.rect
+        pygame.draw.rect(self.virtual_screen, (25, 25, 25), status_panel_rect, border_radius=8)
+        pygame.draw.rect(self.virtual_screen, (60, 60, 60), status_panel_rect, 1, border_radius=8)
+        self.all_sprites.draw(self.virtual_screen)
+        self.status_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.status_window, mouse_pos_virtual)
+
+    def draw_camera(self, mouse_pos_virtual):
+        if self.window_system.is_minimized("Camera"):
+            return
+        
+        camera_rect = self.camera_window.rect
+        pygame.draw.rect(self.virtual_screen, (0, 0, 0), camera_rect)
+        
+        # 1. RECUPERATION VIDEO DIRECTE (FLUIDITÉ MAXIMALE)
+        frame_source = None
+        # On essaie de récupérer la frame la plus récente sans attendre l'IA
+        if start_screen_module.USE_PHONE_SENSORS and start_screen_module.phone_video_frame is not None:
+            # Pas besoin de lock ici car on ne fait que lire pour l'affichage immédiat
+            # Et si on a une déchirure d'image (tearing) c'est pas grave pour l'affichage temps réel
+            frame_source = start_screen_module.phone_video_frame
+        elif self.video_receiver and self.video_receiver.frame is not None:
+            frame_source = self.video_receiver.frame
+
+        if frame_source is not None:
+            try:
+                # Conversion rapide pour l'affichage (On le fait dans le Main Thread maintenant)
+                # C'est moins lourd que l'IA, donc ça tient les 60 FPS
+                frame_rgb = cv2.cvtColor(frame_source, cv2.COLOR_BGR2RGB)
+                frame_data = frame_rgb.swapaxes(0, 1)
+                camera_surf = pygame.surfarray.make_surface(frame_data)
+                
+                scaled_surface = pygame.transform.scale(
+                    camera_surf, 
+                    (camera_rect.w - 4, camera_rect.h - 4)
+                )
+                frame_rect = scaled_surface.get_rect(center=camera_rect.center)
+                self.virtual_screen.blit(scaled_surface, frame_rect)
+                
+                # 2. DESSIN DES BOITES PAR DESSUS (IA ASYNCHRONE)
+                # On utilise les dernières detections connues, même si elles datent d'il y a 100ms
+                if self.ai_options.enabled and self.latest_detections:
+                    gw = frame_rect.w
+                    gh = frame_rect.h
+                    gx = frame_rect.x
+                    gy = frame_rect.y
+                    
+                    for obj in self.latest_detections:
+                        # Reconversion des coords normalisées vers coords écran
+                        # bbox_norm est [x1_norm, y1_norm, x2_norm, y2_norm]
+                        x1 = int(obj["bbox_norm"][0] * gw) + gx
+                        y1 = int(obj["bbox_norm"][1] * gh) + gy
+                        x2 = int(obj["bbox_norm"][2] * gw) + gx
+                        y2 = int(obj["bbox_norm"][3] * gh) + gy
+                        
+                        box_w = x2 - x1
+                        box_h = y2 - y1
+                        
+                        # Dessin du rectangle
+                        pygame.draw.rect(self.virtual_screen, (0, 255, 0), (x1, y1, box_w, box_h), 2)
+                        
+                        # Dessin du label
+                        label_txt = f"{obj['label']} {obj['confidence']:.2f}"
+                        txt_surf = self.font15.render(label_txt, True, (0, 255, 0))
+                        # Fond noir pour le texte pour lisibilité
+                        pygame.draw.rect(self.virtual_screen, (0,0,0), (x1, y1 - 20, txt_surf.get_width()+4, 20))
+                        self.virtual_screen.blit(txt_surf, (x1+2, y1 - 20))
+
+            except Exception as e:
+                pass # Evite le spam console si une frame est corrompue lors de la lecture concurrente
+
+        # ... (Reste du code: Cube, HUD, Bordures) ...
+        pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
+        
+        pad = 12
+        cx = camera_rect.right - max(70, int(camera_rect.w * 0.16))
+        cy = camera_rect.y + max(70, int(camera_rect.h * 0.18))
+        cx = max(camera_rect.x + pad, min(cx, camera_rect.right - pad))
+        cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
+        
+        self.cube.set_screen_pos(cx, cy)
+        self.cube.draw(self.virtual_screen)
+
+        label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
+        pad_label = 8
+        lx = camera_rect.x + pad_label
+        ly = camera_rect.y + pad_label
+        self.virtual_screen.blit(label, (lx, ly))
+
+        # Indicateur de mouvement du cube
+        movement_text = ""
+        movement_color = WHITE
+        if self.cube_movement == 1:
+            movement_text = "▲ FORWARD"
+            movement_color = (0, 255, 0)
+        elif self.cube_movement == -1:
+            movement_text = "▼ BACKWARD"
+            movement_color = (255, 100, 0)
+        else:
+            movement_text = "● STOPPED"
+            movement_color = (150, 150, 150)
+        
+        movement_surf = self.font15.render(movement_text, True, movement_color)
+        movement_y = ly + label.get_height() + 4
+        self.virtual_screen.blit(movement_surf, (lx, movement_y))
+
+        self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
+        self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
+        pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
+
+    # --- Drawers statiques pour les topbars ---
+    
+    def _drawer_signal(self, surf, rect):
+        draw_signal_indicator(surf, rect, self.current_signal)
+
+    def _drawer_ballast(self, surf, rect):
+        draw_ballast_indicator(surf, rect, self.current_ballast)
+
+    def _drawer_speed(self, surf, rect):
+        txt = draw_speed_indicator(surf, rect, float(self.current_speed), unit=self.dashboard.speed_unit)
+        t = self.font15.render(txt, True, (240, 240, 240))
+        surf.blit(t, (rect.x + 28, rect.centery - t.get_height() // 2))
+
+    def _drawer_battery(self, surf, rect):
+        pct = self.battery.percent()
+        draw_battery_indicator(surf, rect, pct, charging=self.battery.charging)
+        t = self.font15.render(f"{pct}%", True, (240, 240, 240))
+        surf.blit(t, (rect.x + 30, rect.centery - t.get_height() // 2))
+
+    def _drawer_pressure_depth(self, surf, rect):
+        draw_pressure_depth_indicator(surf, rect, self.font15, self.current_pressure, self.current_depth)
+
+    def _drawer_temp(self, surf, rect):
+        draw_temp_indicator(surf, rect, self.font15, self.current_temp)
+
+    # --- Main Loop ---
+
+    def draw(self):
+        self.virtual_screen.fill((0, 0, 0, 0))
+        self.virtual_screen.blit(self.logo_amis_big, (20, 20))
+        self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (100, 40))
+
+        for button in self.all_buttons:
+            button.update(pygame.mouse.get_pos()) # Note: button uses real mouse pos usually or virtual depending on impl, adjusted here if needed
+
+        menu_h = self.menu_bar.menu_height
+        mouse_pos_virtual = convert_mouse_pos_with_menu(
+            pygame.mouse.get_pos(),
+            self.screen,
+            menu_h,
+            max_width_crop_ratio=self.max_width_crop_ratio,
+        )
+
+        for key in self.window_system.z_order:
+            if key in self.draw_map:
+                self.draw_map[key](mouse_pos_virtual)
+
+        current_size = self.screen.get_size()
+
+        if self.bg_image:
+            if self.bg_cache['size'] != current_size:
+                img_w, img_h = self.bg_image.get_size()
+                win_w, win_h = current_size
+                scale = max(win_w / img_w, win_h / img_h)
+                scaled_img = pygame.transform.smoothscale(self.bg_image, (int(img_w * scale), int(img_h * scale)))
+                offset = ((win_w - scaled_img.get_width()) // 2, (win_h - scaled_img.get_height()) // 2)
+                self.bg_cache = {'size': current_size, 'surface': scaled_img, 'offset': offset}
+
+            self.screen.blit(self.bg_cache['surface'], self.bg_cache['offset'])
+        else:
+            self.screen.fill(BLACK)
+
+        self.menu_bar.draw_bar(self.screen)
+        
+        mode_text = "TEST MODE" if start_screen_module.USE_PHONE_SENSORS else "SATELLITE MODE"
+        mode_color = (70, 179, 230) if start_screen_module.USE_PHONE_SENSORS else WHITE
+        mode_surf = self.font15.render(mode_text, True, mode_color)
+        mode_y = self.menu_bar.bar_margin_top + (self.menu_bar.bar_height - mode_surf.get_height()) // 2
+        mode_x = current_size[0] - mode_surf.get_width() - 20
+        self.screen.blit(mode_surf, (mode_x, mode_y))
+
+        self.window_system.draw_topbars(
+            self.screen,
+            mode_x=mode_x,
+            mode_y=mode_y,
+            mode_h=mode_surf.get_height(),
+            status_drawers=self.topbar_drawers,
+        )
+
+        # Si l'écran de confirmation d'arrêt est actif, on le dessine
+        # SUR la surface virtuelle (BASE_WIDTH x BASE_HEIGHT) pour que
+        # les rects de clic correspondent aux coordonnées virtuelles.
+        if self.stop_confirmation_active:
+            overlay = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            self.virtual_screen.blit(overlay, (0, 0))
+
+            box_w = min(600, BASE_WIDTH - 120)
+            box_h = 180
+            box_x = (BASE_WIDTH - box_w) // 2
+            box_y = (BASE_HEIGHT - box_h) // 2
+
+            # ombre
+            shadow = pygame.Surface((box_w + 12, box_h + 12), pygame.SRCALPHA)
+            pygame.draw.rect(shadow, (0, 0, 0, 60), shadow.get_rect(), border_radius=16)
+            self.virtual_screen.blit(shadow, (box_x - 6, box_y - 6))
+
+            # boite rouge principale
+            dialog = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+            pygame.draw.rect(dialog, (139, 0, 0), dialog.get_rect(), border_radius=14)
+            pygame.draw.rect(dialog, (200, 50, 50), dialog.get_rect(), 3, border_radius=14)
+
+            title_surf = self.font18.render("Do you want to stop AQUAMIS?", True, (255, 220, 220))
+            dialog.blit(title_surf, (20, 20))
+
+            # boutons virtuels (coordonnées sur la surface virtuelle)
+            btn_w, btn_h = 160, 48
+            gap = 24
+            confirm_rect_v = pygame.Rect(box_x + (box_w // 2) - btn_w - gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
+            cancel_rect_v = pygame.Rect(box_x + (box_w // 2) + gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
+
+            # Dessiner boutons dans la surface principale (pour avoir coins arrondis)
+            pygame.draw.rect(self.virtual_screen, (200, 0, 0), confirm_rect_v, border_radius=10)
+            pygame.draw.rect(self.virtual_screen, (255, 120, 120), confirm_rect_v, 2, border_radius=10)
+            confirm_lbl = self.font15.render("CONFIRM", True, WHITE)
+            self.virtual_screen.blit(confirm_lbl, (confirm_rect_v.centerx - confirm_lbl.get_width() // 2,
+                                                    confirm_rect_v.centery - confirm_lbl.get_height() // 2))
+
+            pygame.draw.rect(self.virtual_screen, (75, 75, 75), cancel_rect_v, border_radius=10)
+            pygame.draw.rect(self.virtual_screen, (150, 150, 150), cancel_rect_v, 2, border_radius=10)
+            cancel_lbl = self.font15.render("CANCEL", True, WHITE)
+            self.virtual_screen.blit(cancel_lbl, (cancel_rect_v.centerx - cancel_lbl.get_width() // 2,
+                                                    cancel_rect_v.centery - cancel_lbl.get_height() // 2))
+
+            # Mettre à jour les rects des boutons utilisés pour la détection de clic
+            self.button_confirm.rect = confirm_rect_v
+            self.button_cancel.rect = cancel_rect_v
+
+        scale, x_offset, y_offset, new_w, new_h = compute_transform_with_menu(
+            self.screen,
+            menu_h,
+            max_width_crop_ratio=self.max_width_crop_ratio,
+        )
+        
+        scaled_v_screen = pygame.transform.smoothscale(self.virtual_screen, (new_w, new_h))
+        self.screen.blit(scaled_v_screen, (x_offset, y_offset))
+
+        self.menu_bar.draw_dropdown(self.screen)
+
+        if self.layout_profile_prompt.show_text_prompt_input:
+            self.layout_profile_prompt.draw(self.screen, self.font)
+
+        if 'IP_MODAL' in globals():
+            ip_modal_draw(self.screen)
+
+        if self.fade_in_alpha > 0:
+            fade = pygame.Surface(current_size)
+            fade.fill(BLACK)
+            fade.set_alpha(self.fade_in_alpha)
+            self.screen.blit(fade, (0,0))
+
+        pygame.display.flip()
+
     def main(self):
         self.logger.info("Main loop started")
         while self.running:
-            self.keys = pygame.key.get_pressed()
-
-            menu_h = self.menu_bar.menu_height
-
-            if self.fade_in_alpha > 0:
-                self.fade_in_alpha = max(0, self.fade_in_alpha - 60)
-
-            for event in pygame.event.get():
-                if self.layout_profile_prompt.show_text_prompt_input:
-                    self.layout_profile_prompt.handle_event_text_prompt(event)
-                    continue
-                if 'IP_MODAL' in globals():
-                    if ip_modal_handle_event(event): continue
-
-                if hasattr(self, "keybinds") and event.type in (pygame.KEYDOWN, pygame.KEYUP):
-                    try:
-                        self.keybinds.handle_event(event)
-                    except Exception:
-                        pass
-                if event.type == pygame.QUIT:
-                    self.running = False
-
-                if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
-                    v_event_pos = convert_mouse_pos_with_menu(
-                        getattr(event, 'pos', pygame.mouse.get_pos()),
-                        self.screen,
-                        menu_h,
-                        max_width_crop_ratio=self.max_width_crop_ratio,
-                    )
-                    bounds_rect = pygame.Rect(0, -menu_h, BASE_WIDTH, BASE_HEIGHT + menu_h)
-
-                    if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, 'button', None) == 1:
-                        self.window_system.handle_focus_click(v_event_pos)
-                        if self.window_system.handle_minimize_click(v_event_pos):
-                            continue
-
-                    if self.window_system.handle_drag_event(event, v_event_pos, bounds_rect=bounds_rect):
-                        continue
-
-                if event.type in (pygame.MOUSEWHEEL, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
-                    v_pos = convert_mouse_pos_with_menu(
-                        pygame.mouse.get_pos(),
-                        self.screen,
-                        menu_h,
-                        max_width_crop_ratio=self.max_width_crop_ratio,
-                    )
-                    self.log_system.handle_event(event, self.logs_window.rect, mouse_pos=v_pos)
-
-                if event.type == pygame.VIDEORESIZE:
-                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_F11:
-                        pygame.display.toggle_fullscreen()
-                    self.button_stop.handle_event_stop(event)
-                    
-                    self._update_status_boxes(event.key)
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-            
-                    mouse_pos = convert_mouse_pos_with_menu(
-                        pygame.mouse.get_pos(),
-                        self.screen,
-                        menu_h,
-                        max_width_crop_ratio=self.max_width_crop_ratio,
-                    )
-                    virtual_event_pos = convert_mouse_pos_with_menu(
-                        event.pos,
-                        self.screen,
-                        menu_h,
-                        max_width_crop_ratio=self.max_width_crop_ratio,
-                    )
-
-                    handled_panel = False
-
-                    # Gyro graph series toggles (ROLL/PITCH/YAW) in the Graphs window
-                    if event.button == 1 and hasattr(self, "_gyro_series_click_rects"):
-                        for series, r in list(self._gyro_series_click_rects.items()):
-                            if r.collidepoint(virtual_event_pos):
-                                if hasattr(self, "graph_angles"):
-                                    self.graph_angles.toggle_series(series)
-                                if hasattr(self, "logger"):
-                                    state = "ON" if self.graph_angles.is_series_enabled(series) else "OFF"
-                                    self.logger.info(f"Gyro graph: {series.upper()} {state}")
-                                handled_panel = True
-                                break
-                    if handled_panel:
-                        continue
-
-                    # Pressure/Depth graph series toggles
-                    if event.button == 1 and hasattr(self, "_pd_series_click_rects"):
-                        for series, r in list(self._pd_series_click_rects.items()):
-                            if r.collidepoint(virtual_event_pos):
-                                if hasattr(self, "graph_pressure_depth"):
-                                    self.graph_pressure_depth.toggle_series(series)
-                                if hasattr(self, "logger"):
-                                    state = "ON" if self.graph_pressure_depth.is_series_enabled(series) else "OFF"
-                                    self.logger.info(f"Pressure/Depth graph: {series.upper()} {state}")
-                                handled_panel = True
-                                break
-                    if handled_panel:
-                        continue
-                    if not self.window_system.is_minimized("CameraControls"):
-                        before_paused = self.camera_controls.paused
-                        handled_panel |= handle_camera_controls_event(
-                            self.camera_controls,
-                            event,
-                            virtual_event_pos,
-                            self.camera_controls_window.rect,
-                        )
-                        if handled_panel and self.camera_controls.paused != before_paused:
-                            self.logger.info("Camera paused" if self.camera_controls.paused else "Camera resumed")
-                    if not self.window_system.is_minimized("AIOptions"):
-                        before_enabled = self.ai_options.enabled
-                        before_tracking = self.ai_options.tracking
-                        handled_panel |= handle_ai_options_event(
-                            self.ai_options,
-                            event,
-                            virtual_event_pos,
-                            self.ai_options_window.rect,
-                        )
-                        if handled_panel:
-                            if self.ai_options.enabled != before_enabled:
-                                self.logger.info(
-                                    f"AI detections {'enabled' if self.ai_options.enabled else 'disabled'}"
-                                )
-                            if self.ai_options.tracking != before_tracking:
-                                self.logger.info(f"AI tracking {'enabled' if self.ai_options.tracking else 'disabled'}")
-                    if handled_panel:
-                        continue
-
-                    real_pos = pygame.mouse.get_pos()
-                    restored = self.window_system.handle_restore_click(real_pos)
-                    if not restored:
-                        self.menu_bar.handle_click(real_pos)
-
-                    if not self.window_system.is_minimized("Speed"):
-                        self.dashboard.set_speed_rect(self.speed_window.rect)
-                        self.dashboard.handle_event(event, virtual_event_pos)
-
-                    # Gestion des boutons de confirmation
-                    if self.stop_confirmation_active:
-                        if self.button_confirm.rect.collidepoint(mouse_pos):
-                            self.button_confirm.click(mouse_pos)
-                        elif self.button_cancel.rect.collidepoint(mouse_pos):
-                            self.button_cancel.click(mouse_pos)
-                    else:
-                        for button in self.all_buttons:
-                            if button.rect.collidepoint(mouse_pos):
-                                button.click(mouse_pos)
-
-            self.virtual_screen.fill((0, 0, 0, 0))
-
-            if 'LAST_SAVED_IP' in globals():
-                host = globals().pop('LAST_SAVED_IP')
-                if start_screen_module.USE_PHONE_SENSORS:
-                    start_screen_module.PHONE_IP = host
-                    start_screen_module.PHONE_VIDEO_URL = f"http://{host}:8080/videofeed"
-
-            if start_screen_module.USE_PHONE_SENSORS:
-                try:
-                    with open(SENSOR_DATA_FILE, "r") as f:
-                        sensor_data = json.load(f)
-                    self.roll_sensor_base = sensor_data.get('roll', self.roll_sensor_base)
-                    self.pitch_sensor_base = sensor_data.get('pitch', self.pitch_sensor_base)
-                    self.yaw_sensor_base = sensor_data.get('yaw', self.yaw_sensor_base)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    pass
-            elif self.data_handler:
-                with self.data_handler.data_lock:
-                    data_text = self.data_handler.received_data
-                    try:
-                        if "AccX" in data_text.keys():
-                            self.roll_sensor_base = data_text.get("AngleRoll", 0) + 90
-                            self.pitch_sensor_base = data_text.get("AnglePitch", 0) + 90
-                            self.yaw_sensor_base = data_text.get("AnglaYaw", 0)
-                    except: pass
-            
-            self.roll = self._clamp_angle_180(self.roll_sensor_base + self.roll_keyboard_delta)
-            self.pitch = self._clamp_angle_180(self.pitch_sensor_base + self.pitch_keyboard_delta)
-            self.yaw = self._clamp_angle_180(self.yaw_sensor_base + self.yaw_keyboard_delta)
-            
-            self.value.append([self.roll, self.pitch, self.yaw])
-
-            if self.data_text == self.envoie:
-                for i in range(1, 5): self.envoie["info_fonction"][i] = 0
-
-            mouse_pos_virtual = convert_mouse_pos_with_menu(
-                pygame.mouse.get_pos(),
-                self.screen,
-                menu_h,
-                max_width_crop_ratio=self.max_width_crop_ratio,
-            )
-
-            self.battery.update()
-
-            try:
-                # Contrôles clavier pour les rotations du cube
-                # R/F: modifier le pitch (rotation verticale)
-                if self.keys[pygame.K_r]:
-                    self.pitch_keyboard_delta += self.cube_rotation_speed
-                if self.keys[pygame.K_f]:
-                    self.pitch_keyboard_delta -= self.cube_rotation_speed
-                
-                # Q/D: modifier le yaw (rotation horizontale)
-                if self.keys[pygame.K_a]:
-                    self.yaw_keyboard_delta -= self.cube_rotation_speed
-                if self.keys[pygame.K_e]:
-                    self.yaw_keyboard_delta += self.cube_rotation_speed
-                
-                # A/E: modifier le roll (gauche/droite)
-                if self.keys[pygame.K_q]:
-                    self.roll_keyboard_delta -= self.cube_rotation_speed
-                if self.keys[pygame.K_d]:
-                    self.roll_keyboard_delta += self.cube_rotation_speed
-                
-                # Z/S: mouvement avant/arrière du cube
-                if self.keys[pygame.K_z]:
-                    self.cube_movement = 1  # Avance
-                elif self.keys[pygame.K_s]:
-                    self.cube_movement = -1  # Recule
-                else:
-                    self.cube_movement = 0  # Immobile
-                
-                # Normaliser les angles à [-180, 180]
-                self.roll_keyboard_delta = self._clamp_angle_180(self.roll_keyboard_delta)
-                self.pitch_keyboard_delta = self._clamp_angle_180(self.pitch_keyboard_delta)
-                self.yaw_keyboard_delta = self._clamp_angle_180(self.yaw_keyboard_delta)
-                
-                # Mettre à jour le cube avec les angles courants (yaw, pitch, roll)
-                self.cube.update(
-                    yaw=self.yaw,
-                    pitch=self.pitch,
-                    roll=self.roll,
-                )
-                
-                # Log les mouvements du cube
-                self._log_cube_movement()
-
-            except Exception:
-                pass
-
-            for box, (rx, ry) in self._status_rel_centers.items():
-                box.rect.center = (self.status_window.rect.x + rx, self.status_window.rect.y + ry)
-
-            self.dashboard.set_signal_position(self.signal_window.rect.x, self.signal_window.rect.y)
-            self.dashboard.set_ballast_position(self.ballast_window.rect.x, self.ballast_window.rect.y)
-            self.dashboard.set_speed_position(self.speed_window.rect.x, self.speed_window.rect.y)
-            self.virtual_screen.blit(self.logo_amis_big, (20, 20))
-            self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (100, 40))
-
-            data_for_telemetry = None
-            try:
-                if (not start_screen_module.USE_PHONE_SENSORS) and self.data_handler:
-                    with self.data_handler.data_lock:
-                        data_for_telemetry = dict(self.data_handler.received_data)
-            except: pass
-
-
-            snap = self.telemetry.snapshot(
-                use_phone_sensors=start_screen_module.USE_PHONE_SENSORS,
-                pitch=float(self.pitch),
-                data=data_for_telemetry,
-            )
-
-                # 3. Ballast (Fixed as requested)
-                # User indicated we can't know this value in this mode, so we keep it fixed.
-
-
-            current_speed = snap.speed
-            current_ballast = snap.ballast
-            current_signal = snap.signal
-            current_pressure = snap.pressure_bar
-            current_depth = snap.depth_m
-            current_temp = snap.elec_temp_c
-
-
-            self.dashboard.update_data(speed=current_speed, ballast=current_ballast, signal=current_signal)
-            for button in self.all_buttons:
-                button.update(mouse_pos_virtual)
-
-            frame = None
-            if start_screen_module.USE_PHONE_SENSORS and start_screen_module.phone_video_frame is not None:
-                with start_screen_module.phone_video_lock:
-                    frame = start_screen_module.phone_video_frame.copy()
-            elif self.video_receiver and self.video_receiver.frame is not None:
-                with self.video_receiver.frame_lock:
-                    frame = self.video_receiver.frame.copy()
-
-            if frame is not None and not self.camera_controls.paused:
-                self._last_camera_frame = frame.copy()
-            if self.camera_controls.paused and self._last_camera_frame is not None:
-                frame = self._last_camera_frame
-
-            def _draw_graphs():
-                if self.window_system.is_minimized("Graphs"):
-                    return
-                right_panel_rect = self.right_graph_window.rect
-                pygame.draw.rect(self.virtual_screen, (25, 25, 25), right_panel_rect, border_radius=8)
-                pygame.draw.rect(self.virtual_screen, (60, 60, 60), right_panel_rect, 1, border_radius=8)
-
-                pad = 7
-                title_gap = self.right_graph_window.titlebar_height + 12
-                inner_left = right_panel_rect.x + pad
-                inner_right = right_panel_rect.right - pad
-                content_top = right_panel_rect.y + title_gap
-                content_bottom = right_panel_rect.bottom - pad
-                content_h = max(0, content_bottom - content_top)
-                gap = 16
-
-                angle_h = max(70, int(content_h * 0.48))
-                pressure_h = max(70, content_h - angle_h - gap)
-
-                legend_w = 120
-                graph_w = max(80, (inner_right - inner_left) - legend_w)
-                if (inner_right - inner_left) <= 140:
-                    graph_w = max(80, inner_right - inner_left)
-
-                angles_y = content_top
-                pressure_y = angles_y + angle_h + gap
-
-                self.graph_angles.x_offset = inner_left
-                self.graph_angles.y_offset = angles_y
-                self.graph_angles.width = graph_w
-                self.graph_angles.height = angle_h
-
-                self.graph_pressure_depth.x_offset = inner_left
-                self.graph_pressure_depth.y_offset = pressure_y
-                self.graph_pressure_depth.width = graph_w
-                self.graph_pressure_depth.height = pressure_h
-
-                label_x = inner_left + graph_w + 12
-                label_y0 = right_panel_rect.y + title_gap + 6
-                self._gyro_series_click_rects = {}
-                self._pd_series_click_rects = {}
-                if label_x < inner_right - 40:
-                    enabled = getattr(self.graph_angles, "enabled_series", {"roll", "pitch", "yaw"})
-                    inactive_c = (140, 155, 170)
-
-                    roll_c = (255, 0, 0) if "roll" in enabled else inactive_c
-                    pitch_c = (0, 255, 0) if "pitch" in enabled else inactive_c
-                    yaw_c = BLUE if "yaw" in enabled else inactive_c
-
-                    roll_s = self.font15.render(f"ROLL: {int(self.roll)}", True, roll_c)
-                    pitch_s = self.font15.render(f"PITCH: {int(self.pitch)}", True, pitch_c)
-                    yaw_s = self.font15.render(f"YAW: {int(self.yaw)}", True, yaw_c)
-
-                    roll_pos = (label_x, label_y0 + 30)
-                    pitch_pos = (label_x, label_y0 + 55)
-                    yaw_pos = (label_x, label_y0 + 80)
-
-                    self.virtual_screen.blit(roll_s, roll_pos)
-                    self.virtual_screen.blit(pitch_s, pitch_pos)
-                    self.virtual_screen.blit(yaw_s, yaw_pos)
-
-                    # Make the whole text line clickable
-                    self._gyro_series_click_rects["roll"] = roll_s.get_rect(topleft=roll_pos)
-                    self._gyro_series_click_rects["pitch"] = pitch_s.get_rect(topleft=pitch_pos)
-                    self._gyro_series_click_rects["yaw"] = yaw_s.get_rect(topleft=yaw_pos)
-
-                    # Pressure/Depth toggles near the pressure graph block
-                    pd_enabled = getattr(self.graph_pressure_depth, "enabled_series", {"pressure", "depth"})
-                    p_c = (255, 0, 0) if "pressure" in pd_enabled else inactive_c
-                    d_c = (0, 0, 255) if "depth" in pd_enabled else inactive_c
-
-                    p_lbl = self.font15.render("PRESSURE", True, p_c)
-                    d_lbl = self.font15.render("DEPTH", True, d_c)
-
-                    pd_y = pressure_y + 8
-                    p_pos = (label_x, pd_y)
-                    d_pos = (label_x, pd_y + 22)
-                    self.virtual_screen.blit(p_lbl, p_pos)
-                    self.virtual_screen.blit(d_lbl, d_pos)
-                    self._pd_series_click_rects["pressure"] = p_lbl.get_rect(topleft=p_pos)
-                    self._pd_series_click_rects["depth"] = d_lbl.get_rect(topleft=d_pos)
-                self.graph_pressure_depth.update_graph_main()
-                self.graph_angles.update_graph_angles(self.roll, self.pitch, self.yaw)
-
-                elapsed = time.time() - self.start_time
-                timer_surf = self.font15.render(f"{int(elapsed)//60:02d} min {int(elapsed)%60:02d} s", True, WHITE)
-                timer_x = self.graph_angles.x_offset + self.graph_angles.width + 10
-                timer_y = angles_y + 5
-                self.virtual_screen.blit(timer_surf, (timer_x, timer_y))
-
-                self.right_graph_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.right_graph_window, mouse_pos_virtual)
-
-            def _draw_logs():
-                if self.window_system.is_minimized("Logs"):
-                    return
-                self.log_system.draw(
-                    self.virtual_screen,
-                    self.logs_window.rect.x,
-                    self.logs_window.rect.y,
-                    self.logs_window.rect.w,
-                    self.logs_window.rect.h,
-                    mouse_pos=mouse_pos_virtual,
-                )
-                self.logs_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.logs_window, mouse_pos_virtual)
-
-            def _draw_signal():
-                if self.window_system.is_minimized("Signal"):
-                    return
-                self.dashboard.set_signal_rect(self.signal_window.rect)
-                self.dashboard.draw_signal(self.virtual_screen, mouse_pos=mouse_pos_virtual)
-                self.signal_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.signal_window, mouse_pos_virtual)
-
-            def _draw_ballast():
-                if self.window_system.is_minimized("Ballast"):
-                    return
-                self.dashboard.set_ballast_rect(self.ballast_window.rect)
-                self.dashboard.draw_ballast(self.virtual_screen, mouse_pos=mouse_pos_virtual)
-                self.ballast_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.ballast_window, mouse_pos_virtual)
-
-            def _draw_speed():
-                if self.window_system.is_minimized("Speed"):
-                    return
-                self.dashboard.set_speed_rect(self.speed_window.rect)
-                self.dashboard.draw_speed(self.virtual_screen, mouse_pos=mouse_pos_virtual)
-                self.speed_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.speed_window, mouse_pos_virtual)
-
-            def _draw_battery():
-                if self.window_system.is_minimized("Battery"):
-                    return
-                bat_rect = self.battery_window.rect
-                pygame.draw.rect(self.virtual_screen, (30, 30, 30), bat_rect, border_radius=8)
-                pygame.draw.rect(self.virtual_screen, (60, 60, 60), bat_rect, 1, border_radius=8)
-                title = self.font15.render("BATTERY", True, WHITE)
-                self.virtual_screen.blit(title, (bat_rect.x + 20, bat_rect.y + 12))
-                pct = self.battery.percent()
-                pct_s = self.font15.render(f"{pct}%", True, WHITE)
-                self.virtual_screen.blit(pct_s, (bat_rect.right - pct_s.get_width() - 20, bat_rect.y + 12))
-                icon_rect = pygame.Rect(bat_rect.x + 20, bat_rect.y + 35, 120, 40)
-                draw_battery_indicator(self.virtual_screen, icon_rect, pct, charging=self.battery.charging)
-                self.battery_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.battery_window, mouse_pos_virtual)
-
-            def _draw_pressure_depth():
-                if self.window_system.is_minimized("PressureDepth"):
-                    return
-                draw_pressure_depth_panel(self.virtual_screen, self.pressure_depth_window.rect, self.font15, current_pressure, current_depth)
-                self.pressure_depth_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.pressure_depth_window, mouse_pos_virtual)
-
-            def _draw_temp():
-                if self.window_system.is_minimized("Temp"):
-                    return
-                draw_temp_panel(self.virtual_screen, self.temp_window.rect, self.font15, current_temp)
-                self.temp_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.temp_window, mouse_pos_virtual)
-
-            def _draw_thrusters():
-                if self.window_system.is_minimized("Thrusters"):
-                    return
-                info = self.envoie.get("info_fonction", [0, 0, 0, 0, 0])
-                right_cmd = float(info[3]) if len(info) > 3 else 0.0
-                left_cmd = float(info[4]) if len(info) > 4 else 0.0
-                draw_thrusters_panel(
-                    self.virtual_screen,
-                    self.thrusters_window.rect,
-                    self.font15,
-                    left_cmd=left_cmd,
-                    right_cmd=right_cmd,
-                    speed=float(current_speed),
-                )
-                self.thrusters_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.thrusters_window, mouse_pos_virtual)
-
-            def _draw_power():
-                if self.window_system.is_minimized("Power"):
-                    return
-                pct = self.battery.percent()
-                draw_power_panel(
-                    self.virtual_screen,
-                    self.power_window.rect,
-                    self.font15,
-                    battery_percent=pct,
-                    charging=self.battery.charging,
-                    consumption_pct_per_min=self.battery.consumption_pct_per_min(),
-                    remaining_min=self.battery.remaining_minutes(),
-                )
-                self.power_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.power_window, mouse_pos_virtual)
-
-            def _draw_camera_controls():
-                if self.window_system.is_minimized("CameraControls"):
-                    return
-                draw_camera_controls_panel(
-                    self.virtual_screen,
-                    self.camera_controls_window.rect,
-                    self.font15,
-                    state=self.camera_controls,
-                )
-                self.camera_controls_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.camera_controls_window, mouse_pos_virtual)
-
-            def _draw_ai_options():
-                if self.window_system.is_minimized("AIOptions"):
-                    return
-                draw_ai_options_panel(
-                    self.virtual_screen,
-                    self.ai_options_window.rect,
-                    self.font15,
-                    state=self.ai_options,
-                )
-                self.ai_options_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.ai_options_window, mouse_pos_virtual)
-
-            def _draw_keybinds():
-                if self.window_system.is_minimized("Keybinds"):
-                    return
-                # use instance method so rects and pressed flags are consistent
-                self.keybinds.draw_keybinds_panel(self.virtual_screen, self.keybinds_window.rect)
-                self.keybinds_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.keybinds_window, mouse_pos_virtual) 
-
-            def _draw_status():
-                if self.window_system.is_minimized("Status"):
-                    return
-                status_panel_rect = self.status_window.rect
-                pygame.draw.rect(self.virtual_screen, (25, 25, 25), status_panel_rect, border_radius=8)
-                pygame.draw.rect(self.virtual_screen, (60, 60, 60), status_panel_rect, 1, border_radius=8)
-                self.all_sprites.draw(self.virtual_screen)
-                self.status_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.status_window, mouse_pos_virtual)
-
-            def _draw_camera():
-                # --- GESTION DU FLUX VIDEO ET IA (ASYNC) ---
-                
-                # 1. Vérifier si le thread a envoyé une nouvelle image
-                try:
-                    # get_nowait est non-bloquant ! C'est la clé de la fluidité.
-                    data = self.ai_queue.get_nowait()
-                    
-                    # On a une nouvelle frame !
-                    frame_data = data["frame_data"]
-                    self.latest_detections = data["detections"] # Mise à jour de la liste
-                    
-                    # Création de la surface Pygame (C'est très rapide car les données sont déjà prêtes)
-                    self.cached_camera_surface = pygame.surfarray.make_surface(frame_data)
-                    
-                except queue.Empty:
-                    # Pas de nouvelle image, ce n'est pas grave, on réutilise la précédente
-                    pass
-
-                # -------------------------------------------
-
-                if self.window_system.is_minimized("Camera"):
-                    return
-                
-                camera_rect = self.camera_window.rect
-                pygame.draw.rect(self.virtual_screen, (0, 0, 0), camera_rect)
-                pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
-                
-                # Affichage de l'image (depuis le cache)
-                if self.cached_camera_surface is not None:
-                    try:
-                        # Mise à l'échelle pour la fenêtre
-                        scaled_surface = pygame.transform.scale(
-                            self.cached_camera_surface, 
-                            (camera_rect.w - 4, camera_rect.h - 4)
-                        )
-                        frame_rect = scaled_surface.get_rect(center=camera_rect.center)
-                        self.virtual_screen.blit(scaled_surface, frame_rect)
-                        
-                        # (Optionnel) Afficher le nombre d'objets détectés pour debug
-                        if self.ai_options.enabled and self.latest_detections:
-                            nb_obj = len(self.latest_detections)
-                            info_s = self.font15.render(f"AI: {nb_obj} objects", True, (0, 255, 0))
-                            self.virtual_screen.blit(info_s, (camera_rect.x + 10, camera_rect.bottom - 30))
-                            
-                    except Exception as e:
-                        print(f"Blit error: {e}")
-
-                # Le reste de l'affichage (Cube, Textes, UI) reste inchangé
-                pad = 12
-                cx = camera_rect.right - max(70, int(camera_rect.w * 0.16))
-                cy = camera_rect.y + max(70, int(camera_rect.h * 0.18))
-                cx = max(camera_rect.x + pad, min(cx, camera_rect.right - pad))
-                cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
-                
-                self.cube.set_screen_pos(cx, cy)
-                self.cube.draw(self.virtual_screen)
-
-                label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
-                pad_label = 8
-                lx = camera_rect.x + pad_label
-                ly = camera_rect.y + pad_label
-                self.virtual_screen.blit(label, (lx, ly))
-
-                # Indicateur de mouvement du cube
-                movement_text = ""
-                movement_color = WHITE
-                if self.cube_movement == 1:
-                    movement_text = "▲ FORWARD"
-                    movement_color = (0, 255, 0)
-                elif self.cube_movement == -1:
-                    movement_text = "▼ BACKWARD"
-                    movement_color = (255, 100, 0)
-                else:
-                    movement_text = "● STOPPED"
-                    movement_color = (150, 150, 150)
-                
-                movement_surf = self.font15.render(movement_text, True, movement_color)
-                movement_y = ly + label.get_height() + 4
-                self.virtual_screen.blit(movement_surf, (lx, movement_y))
-
-                self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
-                pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
-
-                pad = 12
-                # Keep cube anchored near top-right of the camera window (and inside bounds)
-                cx = camera_rect.right - max(70, int(camera_rect.w * 0.16))
-                cy = camera_rect.y + max(70, int(camera_rect.h * 0.18))
-                cx = max(camera_rect.x + pad, min(cx, camera_rect.right - pad))
-                cy = max(camera_rect.y + pad, min(cy, camera_rect.bottom - pad))
-                
-                self.cube.set_screen_pos(cx, cy)
-                self.cube.draw(self.virtual_screen)
-
-                label = self.font15.render("FRONT VIEW", True, (70, 179, 230))
-                pad_label = 8
-                lx = camera_rect.x + pad_label
-                ly = camera_rect.y + pad_label
-                self.virtual_screen.blit(label, (lx, ly))
-
-                # Indicateur de mouvement du cube
-                movement_text = ""
-                movement_color = WHITE
-                if self.cube_movement == 1:
-                    movement_text = "▲ FORWARD"
-                    movement_color = (0, 255, 0)
-                elif self.cube_movement == -1:
-                    movement_text = "▼ BACKWARD"
-                    movement_color = (255, 100, 0)
-                else:
-                    movement_text = "● STOPPED"
-                    movement_color = (150, 150, 150)
-                
-                movement_surf = self.font15.render(movement_text, True, movement_color)
-                movement_x = lx
-                movement_y = ly + label.get_height() + 4
-                self.virtual_screen.blit(movement_surf, (movement_x, movement_y))
-
-                self.camera_window.draw_titlebar_hover(self.virtual_screen, mouse_pos_virtual)
-                self.window_system.draw_minimize_button(self.virtual_screen, self.camera_window, mouse_pos_virtual)
-                pygame.draw.rect(self.virtual_screen, BLUE, camera_rect, 2)
-
-            draw_map = {
-                "Camera": _draw_camera,
-                "Graphs": _draw_graphs,
-                "Status": _draw_status,
-                "Logs": _draw_logs,
-                "Signal": _draw_signal,
-                "Ballast": _draw_ballast,
-                "Speed": _draw_speed,
-                "Battery": _draw_battery,
-                "PressureDepth": _draw_pressure_depth,
-                "Temp": _draw_temp,
-                "Thrusters": _draw_thrusters,
-                "Power": _draw_power,
-                "CameraControls": _draw_camera_controls,
-                "AIOptions": _draw_ai_options,
-                "Keybinds": _draw_keybinds,
-            }
-
-            for key in self.window_system.z_order:
-                fn = draw_map.get(key)
-                if fn is not None:
-                    fn()
-
-            current_size = self.screen.get_size()
-
-            if self.bg_image:
-                if self.bg_cache['size'] != current_size:
-                    img_w, img_h = self.bg_image.get_size()
-                    win_w, win_h = current_size
-                    scale = max(win_w / img_w, win_h / img_h)
-                    scaled_img = pygame.transform.smoothscale(self.bg_image, (int(img_w * scale), int(img_h * scale)))
-                    offset = ((win_w - scaled_img.get_width()) // 2, (win_h - scaled_img.get_height()) // 2)
-                    self.bg_cache = {'size': current_size, 'surface': scaled_img, 'offset': offset}
-
-                self.screen.blit(self.bg_cache['surface'], self.bg_cache['offset'])
-            else:
-                self.screen.fill(BLACK)
-
-            self.menu_bar.update(pygame.mouse.get_pos())
-            self.menu_bar.draw_bar(self.screen)
-            menu_height = self.menu_bar.menu_height
-
-            mode_text = "TEST MODE" if start_screen_module.USE_PHONE_SENSORS else "SATELLITE MODE"
-            mode_color = (70, 179, 230) if start_screen_module.USE_PHONE_SENSORS else WHITE
-            mode_surf = self.font15.render(mode_text, True, mode_color)
-            mode_y = self.menu_bar.bar_margin_top + (self.menu_bar.bar_height - mode_surf.get_height()) // 2
-            mode_x = current_size[0] - mode_surf.get_width() - 20
-            self.screen.blit(mode_surf, (mode_x, mode_y))
-
-            def _drawer_signal(surf, rect):
-                draw_signal_indicator(surf, rect, current_signal)
-
-            def _drawer_ballast(surf, rect):
-                draw_ballast_indicator(surf, rect, current_ballast)
-
-            def _drawer_speed(surf, rect):
-                txt = draw_speed_indicator(surf, rect, float(current_speed), unit=self.dashboard.speed_unit)
-                t = self.font15.render(txt, True, (240, 240, 240))
-                surf.blit(t, (rect.x + 28, rect.centery - t.get_height() // 2))
-
-            def _drawer_battery(surf, rect):
-                pct = self.battery.percent()
-                draw_battery_indicator(surf, rect, pct, charging=self.battery.charging)
-                t = self.font15.render(f"{pct}%", True, (240, 240, 240))
-                surf.blit(t, (rect.x + 30, rect.centery - t.get_height() // 2))
-
-            def _drawer_pressure_depth(surf, rect):
-                draw_pressure_depth_indicator(surf, rect, self.font15, current_pressure, current_depth)
-
-            def _drawer_temp(surf, rect):
-                draw_temp_indicator(surf, rect, self.font15, current_temp)
-
-            self.window_system.draw_topbars(
-                self.screen,
-                mode_x=mode_x,
-                mode_y=mode_y,
-                mode_h=mode_surf.get_height(),
-                status_drawers={
-                    "Signal": _drawer_signal,
-                    "Ballast": _drawer_ballast,
-                    "Speed": _drawer_speed,
-                    "Battery": _drawer_battery,
-                    "PressureDepth": _drawer_pressure_depth,
-                    "Temp": _drawer_temp,
-                },
-            )
-
-            # Si l'écran de confirmation d'arrêt est actif, on le dessine
-            # SUR la surface virtuelle (BASE_WIDTH x BASE_HEIGHT) pour que
-            # les rects de clic correspondent aux coordonnées virtuelles.
-            if self.stop_confirmation_active:
-                overlay = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
-                self.virtual_screen.blit(overlay, (0, 0))
-
-                box_w = min(600, BASE_WIDTH - 120)
-                box_h = 180
-                box_x = (BASE_WIDTH - box_w) // 2
-                box_y = (BASE_HEIGHT - box_h) // 2
-
-                # ombre
-                shadow = pygame.Surface((box_w + 12, box_h + 12), pygame.SRCALPHA)
-                pygame.draw.rect(shadow, (0, 0, 0, 60), shadow.get_rect(), border_radius=16)
-                self.virtual_screen.blit(shadow, (box_x - 6, box_y - 6))
-
-                # boite rouge principale
-                dialog = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
-                pygame.draw.rect(dialog, (139, 0, 0), dialog.get_rect(), border_radius=14)
-                pygame.draw.rect(dialog, (200, 50, 50), dialog.get_rect(), 3, border_radius=14)
-
-                title_surf = self.font18.render("Do you want to stop AQUAMIS?", True, (255, 220, 220))
-                dialog.blit(title_surf, (20, 20))
-
-                # boutons virtuels (coordonnées sur la surface virtuelle)
-                btn_w, btn_h = 160, 48
-                gap = 24
-                confirm_rect_v = pygame.Rect(box_x + (box_w // 2) - btn_w - gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
-                cancel_rect_v = pygame.Rect(box_x + (box_w // 2) + gap//2, box_y + box_h - btn_h - 20, btn_w, btn_h)
-
-                # Dessiner boutons dans la surface principale (pour avoir coins arrondis)
-                pygame.draw.rect(self.virtual_screen, (200, 0, 0), confirm_rect_v, border_radius=10)
-                pygame.draw.rect(self.virtual_screen, (255, 120, 120), confirm_rect_v, 2, border_radius=10)
-                confirm_lbl = self.font15.render("CONFIRM", True, WHITE)
-                self.virtual_screen.blit(confirm_lbl, (confirm_rect_v.centerx - confirm_lbl.get_width() // 2,
-                                                       confirm_rect_v.centery - confirm_lbl.get_height() // 2))
-
-                pygame.draw.rect(self.virtual_screen, (75, 75, 75), cancel_rect_v, border_radius=10)
-                pygame.draw.rect(self.virtual_screen, (150, 150, 150), cancel_rect_v, 2, border_radius=10)
-                cancel_lbl = self.font15.render("CANCEL", True, WHITE)
-                self.virtual_screen.blit(cancel_lbl, (cancel_rect_v.centerx - cancel_lbl.get_width() // 2,
-                                                      cancel_rect_v.centery - cancel_lbl.get_height() // 2))
-
-                # Mettre à jour les rects des boutons utilisés pour la détection de clic
-                self.button_confirm.rect = confirm_rect_v
-                self.button_cancel.rect = cancel_rect_v
-
-            scale, x_offset, y_offset, new_w, new_h = compute_transform_with_menu(
-                self.screen,
-                menu_height,
-                max_width_crop_ratio=self.max_width_crop_ratio,
-            )
-            
-            scaled_v_screen = pygame.transform.smoothscale(self.virtual_screen, (new_w, new_h))
-            self.screen.blit(scaled_v_screen, (x_offset, y_offset))
-
-            self.menu_bar.draw_dropdown(self.screen)
-
-            if self.layout_profile_prompt.show_text_prompt_input:
-                self.layout_profile_prompt.draw(self.screen, self.font)
-
-            if 'IP_MODAL' in globals():
-                ip_modal_draw(self.screen)
-
-            if self.fade_in_alpha > 0:
-                fade = pygame.Surface(current_size)
-                fade.fill(BLACK)
-                fade.set_alpha(self.fade_in_alpha)
-                self.screen.blit(fade, (0,0))
-
-            self.envoie["info_fonction"][0] +=1  # Reset vertical movement each frame
-            try:
-                self.data_handler.message_to_send = self.envoie
-            except: pass
-            
-            pygame.display.flip()
+            self.handle_events()
+            self.update()
+            self.draw()
             self.clock.tick(60)
 
         pygame.quit()
