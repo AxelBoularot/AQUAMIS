@@ -795,9 +795,12 @@ class App():
             self.virtual_screen.blit(self.font.render("AQUAMIS", True, YELLOW), (100, 40))
 
             data_for_telemetry = None
-            if (not start_screen_module.USE_PHONE_SENSORS) and self.data_handler:
-                with self.data_handler.data_lock:
-                    data_for_telemetry = dict(self.data_handler.received_data)
+            try:
+                if (not start_screen_module.USE_PHONE_SENSORS) and self.data_handler:
+                    with self.data_handler.data_lock:
+                        data_for_telemetry = dict(self.data_handler.received_data)
+            except: pass
+
 
             snap = self.telemetry.snapshot(
                 use_phone_sensors=start_screen_module.USE_PHONE_SENSORS,
